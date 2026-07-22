@@ -1,5 +1,15 @@
 import { supabase } from '../supabase';
 import { ReservationDetails, VehicleInspection, Payment, ProtectionAssurance } from '../types';
+import { sessionService } from '../utils/sessionService';
+
+// Normalise une valeur de colonne UUID : renvoie null pour toute valeur vide
+// ('' inclus). PostgreSQL rejette '' pour un type uuid avec l'erreur 22P02
+// "invalid input syntax for type uuid", qui remonte en HTTP 400.
+function toUuidOrNull(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim();
+  return s === '' ? null : s;
+}
 
 // Mappe un forfait d'assurance de protection embarqué (avec ses items + statut).
 function mapProtectionAssurance(pa: any): ProtectionAssurance | undefined {
@@ -62,17 +72,38 @@ export class ReservationsService {
     // Origine : 'agency' (créée par l'admin, défaut) ou 'website' (site public).
     source?: 'website' | 'agency';
   }): Promise<{ id: string }> {
+    // Normalise/valide les UUID en amont : une chaîne vide '' envoyée pour une
+    // colonne uuid provoque un 400 (22P02) côté PostgREST.
+    const clientId = toUuidOrNull(data.clientId);
+    const carId = toUuidOrNull(data.carId);
+    const departureAgencyId = toUuidOrNull(data.departureAgencyId);
+    const returnAgencyId = toUuidOrNull(data.returnAgencyId);
+
+    if (!clientId || !carId) {
+      throw new Error(
+        "Impossible de créer la réservation : client ou véhicule manquant (identifiant invalide)."
+      );
+    }
+
+    // Réservations « agence » : garantir une session Supabase authentifiée avant
+    // l'insert. Sans persistSession, le SDK peut retomber sur la clé anon et RLS
+    // rejette alors l'écriture ("new row violates row-level security policy").
+    // Les réservations du site public ('website') passent volontairement en anon.
+    if ((data.source || 'agency') !== 'website') {
+      await sessionService.ensureSupabaseSession();
+    }
+
     const { data: reservation, error } = await supabase
       .from('reservations')
       .insert([{
-        client_id: data.clientId,
-        car_id: data.carId,
+        client_id: clientId,
+        car_id: carId,
         departure_date: data.departureDate,
         departure_time: data.departureTime,
-        departure_agency_id: data.departureAgencyId,
+        departure_agency_id: departureAgencyId,
         return_date: data.returnDate,
         return_time: data.returnTime,
-        return_agency_id: data.returnAgencyId,
+        return_agency_id: returnAgencyId,
         price_per_day: data.pricePerDay,
         price_week: data.priceWeek,
         price_month: data.priceMonth,
@@ -80,7 +111,7 @@ export class ReservationsService {
         total_price: data.totalPrice,
         deposit: data.deposit,
         discount_amount: data.discountAmount || 0,
-        discount_type: data.discountType,
+        discount_type: data.discountType || 'fixed',
         advance_payment: data.advancePayment || 0,
         remaining_payment: data.remainingPayment,
         status: data.status || 'pending',
@@ -90,7 +121,7 @@ export class ReservationsService {
         euro_rate: data.euroRate || 145,
         assurance_enabled: data.assuranceEnabled || false,
         assurance_percentage: data.assurancePercentage || null,
-        protection_assurance_id: data.protectionAssuranceId || null,
+        protection_assurance_id: toUuidOrNull(data.protectionAssuranceId),
         protection_assurance_name: data.protectionAssuranceName || null,
         protection_assurance_price: data.protectionAssurancePrice || 0,
         created_by: data.createdBy || null,
@@ -102,7 +133,21 @@ export class ReservationsService {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ createReservation Supabase error:', error);
+      // Message clair selon la cause la plus fréquente.
+      if (error.code === '42501' || /row-level security/i.test(error.message || '')) {
+        throw new Error(
+          "Session expirée ou droits insuffisants pour enregistrer la réservation. Reconnectez-vous puis réessayez."
+        );
+      }
+      if (error.code === '22P02') {
+        throw new Error(
+          "Données invalides (client, véhicule ou agence). Vérifiez la sélection puis réessayez."
+        );
+      }
+      throw error;
+    }
     return { id: reservation.id };
   }
 

@@ -365,10 +365,12 @@ export const CreateReservationForm: React.FC<CreateReservationFormProps> = ({ la
         });
       } else {
         // Create new reservation
+        // Declared outside the try/catch so the catch block can reference it
+        // when logging (previously threw "workerFullName is not defined",
+        // which masked the real Supabase error).
+        let workerFullName: string | null = null;
         try {
           // Fetch worker's full name from database using email
-          let workerFullName: string | null = null;
-          
           if (user?.email) {
             try {
               console.log('🔍 Fetching worker by email:', user.email);

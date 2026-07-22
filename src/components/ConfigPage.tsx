@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X } from 'lucide-react';
 import { DatabaseService } from '../services/DatabaseService';
 import { supabase } from '../supabase';
+import { sessionService } from '../utils/sessionService';
 
 interface ConfigPageProps {
   lang: Language;
@@ -13,7 +14,14 @@ interface ConfigPageProps {
 export const ConfigPage: React.FC<ConfigPageProps> = ({ lang, user }) => {
   const [activeTab, setActiveTab] = useState<'general' | 'profile' | 'database'>('general');
   const [loading, setLoading] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingSecurity, setSavingSecurity] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const notify = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 4000);
+  };
 
   // General Settings - Load from website settings
   const [generalData, setGeneralData] = useState({
@@ -110,6 +118,122 @@ export const ConfigPage: React.FC<ConfigPageProps> = ({ lang, user }) => {
   const handleSecurityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setSecurityData(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Enregistre le profil (nom complet). La photo est gérée séparément à l'upload.
+  const handleSaveProfile = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!user.email) {
+      notify('error', lang === 'fr' ? 'Utilisateur introuvable.' : 'المستخدم غير موجود.');
+      return;
+    }
+    const fullName = profileData.name?.trim();
+    if (!fullName) {
+      notify('error', lang === 'fr' ? 'Le nom complet est requis.' : 'الاسم الكامل مطلوب.');
+      return;
+    }
+    try {
+      setSavingProfile(true);
+      // Garantit une session Supabase authentifiée (RLS "authenticated" sur workers).
+      await sessionService.ensureSupabaseSession();
+
+      const { error: workerError } = await supabase
+        .from('workers')
+        .update({ full_name: fullName })
+        .eq('email', user.email);
+      if (workerError) throw workerError;
+
+      // Best-effort : synchronise les métadonnées du compte Auth (ignore l'échec).
+      try {
+        await supabase.auth.updateUser({ data: { full_name: fullName } });
+      } catch { /* pas de session Auth (employé) : non bloquant */ }
+
+      notify('success', lang === 'fr' ? 'Profil mis à jour avec succès !' : 'تم تحديث الملف الشخصي بنجاح!');
+    } catch (error: any) {
+      console.error('Error updating profile:', error);
+      notify('error', lang === 'fr'
+        ? `Erreur lors de la mise à jour du profil${error?.message ? ' : ' + error.message : ''}`
+        : 'خطأ أثناء تحديث الملف الشخصي');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  // Enregistre les identifiants de connexion (nom d'utilisateur, e-mail, mot de passe).
+  const handleSaveSecurity = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!user.email) {
+      notify('error', lang === 'fr' ? 'Utilisateur introuvable.' : 'المستخدم غير موجود.');
+      return;
+    }
+
+    const wantsPasswordChange = !!(securityData.newPassword || securityData.confirmPassword);
+    if (wantsPasswordChange) {
+      if (securityData.newPassword !== securityData.confirmPassword) {
+        notify('error', lang === 'fr' ? 'Les mots de passe ne correspondent pas.' : 'كلمتا المرور غير متطابقتين.');
+        return;
+      }
+      if (securityData.newPassword.length < 6) {
+        notify('error', lang === 'fr' ? 'Le mot de passe doit contenir au moins 6 caractères.' : 'يجب أن تحتوي كلمة المرور على 6 أحرف على الأقل.');
+        return;
+      }
+    }
+
+    const newEmail = securityData.email?.trim().toLowerCase() || '';
+    const emailChanged = !!newEmail && newEmail !== user.email.trim().toLowerCase();
+
+    try {
+      setSavingSecurity(true);
+      // Session Supabase authentifiée requise pour auth.updateUser + RLS workers.
+      const hasAuthSession = await sessionService.ensureSupabaseSession();
+
+      // 1) Mise à jour de la ligne workers (source du fallback login_worker).
+      const workerUpdate: Record<string, any> = { username: securityData.username?.trim() || null };
+      if (newEmail) workerUpdate.email = newEmail;
+      if (wantsPasswordChange) workerUpdate.password = securityData.newPassword;
+
+      const { error: workerError } = await supabase
+        .from('workers')
+        .update(workerUpdate)
+        .eq('email', user.email);
+      if (workerError) throw workerError;
+
+      // 2) Mise à jour du compte Auth Supabase (e-mail / mot de passe de connexion).
+      //    Nécessite une session authentifiée : les employés (session locale) ne
+      //    l'ont pas — le fallback login_worker reste alors la source de vérité.
+      if ((wantsPasswordChange || emailChanged)) {
+        if (hasAuthSession) {
+          const authUpdate: { email?: string; password?: string } = {};
+          if (emailChanged) authUpdate.email = newEmail;
+          if (wantsPasswordChange) authUpdate.password = securityData.newPassword;
+          const { error: authError } = await supabase.auth.updateUser(authUpdate);
+          if (authError) {
+            console.warn('auth.updateUser failed:', authError.message);
+            notify('error', lang === 'fr'
+              ? `Identifiants enregistrés, mais la mise à jour du compte a échoué : ${authError.message}`
+              : `تم الحفظ، لكن فشل تحديث حساب الدخول: ${authError.message}`);
+            setSecurityData(prev => ({ ...prev, newPassword: '', confirmPassword: '' }));
+            return;
+          }
+        } else {
+          notify('error', lang === 'fr'
+            ? 'Identifiants enregistrés localement. Reconnectez-vous en tant qu\'administrateur pour synchroniser le mot de passe du compte.'
+            : 'تم الحفظ محليًا. سجّل الدخول كمسؤول لمزامنة كلمة مرور الحساب.');
+          setSecurityData(prev => ({ ...prev, newPassword: '', confirmPassword: '' }));
+          return;
+        }
+      }
+
+      setSecurityData(prev => ({ ...prev, newPassword: '', confirmPassword: '' }));
+      notify('success', lang === 'fr' ? 'Informations de connexion mises à jour avec succès !' : 'تم تحديث معلومات الدخول بنجاح!');
+    } catch (error: any) {
+      console.error('Error updating security info:', error);
+      notify('error', lang === 'fr'
+        ? `Erreur lors de la mise à jour${error?.message ? ' : ' + error.message : ''}`
+        : 'خطأ أثناء التحديث');
+    } finally {
+      setSavingSecurity(false);
+    }
   };
 
   const handleSaveAgencyInfo = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -656,7 +780,7 @@ export const ConfigPage: React.FC<ConfigPageProps> = ({ lang, user }) => {
                   <h2 className="text-2xl font-black uppercase tracking-tighter">👤 {{fr: 'Mon Profil', ar: 'ملفي الشخصي'}[lang]}</h2>
                 </div>
 
-                <form className="p-8 space-y-6">
+                <form className="p-8 space-y-6" onSubmit={handleSaveProfile}>
                   {/* Profile Photo */}
                   <div className="space-y-4">
                     <label className="label-saas">📸 {{fr: 'Photo de profil', ar: 'صورة الملف'}[lang]}</label>
@@ -700,15 +824,20 @@ export const ConfigPage: React.FC<ConfigPageProps> = ({ lang, user }) => {
                   <div className="flex gap-3 pt-6 border-t border-saas-border">
                     <button
                       type="button"
-                      className="flex-1 py-3 px-4 rounded-lg font-bold text-sm bg-white border-2 border-saas-border hover:bg-saas-bg-light transition-colors text-saas-text-main"
+                      disabled={savingProfile}
+                      onClick={() => setProfileData({ name: user.name, profilePhoto: user.avatar })}
+                      className="flex-1 py-3 px-4 rounded-lg font-bold text-sm bg-white border-2 border-saas-border hover:bg-saas-bg-light transition-colors text-saas-text-main disabled:opacity-60"
                     >
                       {{fr: 'Annuler', ar: 'إلغاء'}[lang]}
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 btn-saas-primary py-3"
+                      disabled={savingProfile}
+                      className="flex-1 btn-saas-primary py-3 disabled:opacity-60"
                     >
-                      {{fr: 'Enregistrer', ar: 'حفظ'}[lang]}
+                      {savingProfile
+                        ? {fr: 'Enregistrement...', ar: 'جارٍ الحفظ...'}[lang]
+                        : {fr: 'Enregistrer', ar: 'حفظ'}[lang]}
                     </button>
                   </div>
                 </form>
@@ -722,7 +851,7 @@ export const ConfigPage: React.FC<ConfigPageProps> = ({ lang, user }) => {
                   </h2>
                 </div>
 
-                <form className="p-8 space-y-6">
+                <form className="p-8 space-y-6" onSubmit={handleSaveSecurity}>
                   {/* Username */}
                   <div className="space-y-2">
                     <label className="label-saas">👤 {{fr: 'Nom d\'utilisateur', ar: 'اسم المستخدم'}[lang]}</label>
@@ -777,15 +906,20 @@ export const ConfigPage: React.FC<ConfigPageProps> = ({ lang, user }) => {
                   <div className="flex gap-3 pt-6 border-t border-saas-border">
                     <button
                       type="button"
-                      className="flex-1 py-3 px-4 rounded-lg font-bold text-sm bg-white border-2 border-saas-border hover:bg-saas-bg-light transition-colors text-saas-text-main"
+                      disabled={savingSecurity}
+                      onClick={() => setSecurityData(prev => ({ ...prev, newPassword: '', confirmPassword: '' }))}
+                      className="flex-1 py-3 px-4 rounded-lg font-bold text-sm bg-white border-2 border-saas-border hover:bg-saas-bg-light transition-colors text-saas-text-main disabled:opacity-60"
                     >
                       {{fr: 'Annuler', ar: 'إلغاء'}[lang]}
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 btn-saas-primary py-3"
+                      disabled={savingSecurity}
+                      className="flex-1 btn-saas-primary py-3 disabled:opacity-60"
                     >
-                      {{fr: 'Mettre à jour', ar: 'تحديث'}[lang]}
+                      {savingSecurity
+                        ? {fr: 'Mise à jour...', ar: 'جارٍ التحديث...'}[lang]
+                        : {fr: 'Mettre à jour', ar: 'تحديث'}[lang]}
                     </button>
                   </div>
                 </form>
