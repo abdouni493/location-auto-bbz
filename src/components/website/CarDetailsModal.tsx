@@ -37,7 +37,7 @@ export const CarDetailsModal: React.FC<CarDetailsModalProps> = ({ lang, car, onC
         onClick={e => e.stopPropagation()}
         className="relative rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
         style={{
-          background: '#FFFFFF',
+          background: 'var(--color-surface)',
           border: '1px solid rgba(212,175,55,0.2)',
           boxShadow: '0 0 60px rgba(212,175,55,0.06), 0 25px 50px var(--color-border-soft)',
         }}

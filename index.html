@@ -10,6 +10,27 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,300&display=swap" rel="stylesheet">
+    <!--
+      Pose data-theme AVANT le premier octet de CSS : sans cela la page
+      flasherait dans le mauvais thème le temps que le bundle se charge.
+      Doit rester aligné avec src/utils/theme.ts (mêmes clés, mêmes défauts) :
+      admin = clair, site public = sombre.
+    -->
+    <script>
+      (function () {
+        try {
+          var p = location.pathname;
+          var isSite = p.indexOf('/website') === 0 && p.indexOf('/website-') !== 0;
+          var key = isSite ? 'mhd-auto-theme-site' : 'mhd-auto-theme-app';
+          var saved = localStorage.getItem(key);
+          var theme = saved === 'dark' || saved === 'light' ? saved : (isSite ? 'dark' : 'light');
+          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.style.colorScheme = theme;
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

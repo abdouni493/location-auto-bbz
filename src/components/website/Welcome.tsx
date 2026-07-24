@@ -345,7 +345,7 @@ export const Welcome: React.FC<WelcomeProps> = ({ lang, websiteSettings, agencie
 
       {/* ══ FEATURES SECTION ══ */}
       <section className="relative py-24 px-4 sm:px-6 lg:px-8" style={{
-        background: '#FFFFFF',
+        background: 'var(--color-surface)',
         borderTop: '1px solid var(--color-border-soft)',
         borderBottom: '1px solid var(--color-border-soft)',
       }}>

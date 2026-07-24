@@ -1,34 +1,61 @@
 /**
  * Thème clair / sombre.
  *
- * Le mode SOMBRE (fond noir, boutons or) est le défaut de l'application et du
- * site public. L'attribut `data-theme` posé sur <html> pilote toutes les
- * variables CSS définies dans src/index.css — aucun composant n'a besoin de
- * connaître le thème pour s'afficher correctement.
+ * Deux ESPACES indépendants, chacun avec son propre défaut et son propre
+ * stockage :
  *
- * Le choix est mémorisé dans localStorage et partagé entre l'admin et le site
- * public (même origine), pour qu'un aller-retour ne réinitialise rien.
+ *   • `app`  — l'application d'administration → CLAIR par défaut
+ *   • `site` — le site public (/website)      → SOMBRE par défaut
+ *
+ * L'espace courant se déduit de l'URL ; passer de l'admin au site (et
+ * inversement) réapplique automatiquement le thème du nouvel espace, tout en
+ * mémorisant le choix fait dans chacun.
+ *
+ * L'attribut `data-theme` posé sur <html> pilote toutes les variables CSS
+ * définies dans src/index.css — aucun composant n'a besoin de connaître le
+ * thème pour s'afficher correctement.
  */
 
 export type Theme = 'dark' | 'light';
+export type ThemeScope = 'app' | 'site';
 
-const STORAGE_KEY = 'mhd-auto-theme';
-const DEFAULT_THEME: Theme = 'dark';
+/** Une clé de stockage par espace : l'admin et le site ne se marchent pas dessus. */
+const STORAGE_KEYS: Record<ThemeScope, string> = {
+  app: 'mhd-auto-theme-app',
+  site: 'mhd-auto-theme-site',
+};
+
+const DEFAULT_THEMES: Record<ThemeScope, Theme> = {
+  app: 'light',
+  site: 'dark',
+};
+
+/** Ancienne clé unique (avant la séparation admin / site) — purgée au démarrage. */
+const LEGACY_STORAGE_KEY = 'mhd-auto-theme';
 
 type Listener = (theme: Theme) => void;
 const listeners = new Set<Listener>();
 
 const isTheme = (v: unknown): v is Theme => v === 'dark' || v === 'light';
 
-/** Thème enregistré, ou le défaut (sombre). */
-export const getStoredTheme = (): Theme => {
-  if (typeof window === 'undefined') return DEFAULT_THEME;
+/** Espace courant. Mis à jour par `setThemeScope` au fil de la navigation. */
+let currentScope: ThemeScope = 'app';
+
+/** `/website` (et ses sous-chemins) = site public ; tout le reste = admin. */
+export const scopeFromPath = (pathname: string): ThemeScope =>
+  pathname.startsWith('/website') && !pathname.startsWith('/website-') ? 'site' : 'app';
+
+export const getThemeScope = (): ThemeScope => currentScope;
+
+/** Thème enregistré pour un espace, ou son défaut. */
+export const getStoredTheme = (scope: ThemeScope = currentScope): Theme => {
+  if (typeof window === 'undefined') return DEFAULT_THEMES[scope];
   try {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    return isTheme(saved) ? saved : DEFAULT_THEME;
+    const saved = window.localStorage.getItem(STORAGE_KEYS[scope]);
+    return isTheme(saved) ? saved : DEFAULT_THEMES[scope];
   } catch {
     // localStorage indisponible (navigation privée stricte)
-    return DEFAULT_THEME;
+    return DEFAULT_THEMES[scope];
   }
 };
 
@@ -50,21 +77,39 @@ export const applyTheme = (theme: Theme): void => {
   }
 };
 
-/** Change le thème, le mémorise et prévient les abonnés. */
-export const setTheme = (theme: Theme): void => {
-  applyTheme(theme);
+/** Change le thème de l'espace courant, le mémorise et prévient les abonnés. */
+export const setTheme = (theme: Theme, scope: ThemeScope = currentScope): void => {
+  if (scope === currentScope) applyTheme(theme);
   try {
-    window.localStorage.setItem(STORAGE_KEY, theme);
+    window.localStorage.setItem(STORAGE_KEYS[scope], theme);
   } catch {
     // Sans stockage, le thème vaut pour la session en cours seulement.
   }
-  listeners.forEach(fn => fn(theme));
+  if (scope === currentScope) listeners.forEach(fn => fn(theme));
 };
 
 export const toggleTheme = (): Theme => {
   const next: Theme = getStoredTheme() === 'dark' ? 'light' : 'dark';
   setTheme(next);
   return next;
+};
+
+/**
+ * Bascule vers un autre espace (navigation admin ↔ site public) et applique
+ * son thème. Sans effet — donc sans re-rendu inutile — si l'espace ne change
+ * pas. Retourne le thème appliqué.
+ */
+export const setThemeScope = (scope: ThemeScope): Theme => {
+  const theme = getStoredTheme(scope);
+  if (scope === currentScope) {
+    // Même espace : on se contente de garantir que le DOM est à jour.
+    applyTheme(theme);
+    return theme;
+  }
+  currentScope = scope;
+  applyTheme(theme);
+  listeners.forEach(fn => fn(theme));
+  return theme;
 };
 
 /** S'abonne aux changements de thème. Retourne la fonction de désabonnement. */
@@ -74,22 +119,30 @@ export const onThemeChange = (fn: Listener): (() => void) => {
 };
 
 /**
- * Applique le thème AVANT le premier rendu de React, pour éviter le flash
- * blanc au chargement. Appelé depuis src/main.tsx.
+ * Applique le thème AVANT le premier rendu de React, pour éviter le flash de
+ * couleur au chargement. Appelé depuis src/main.tsx.
  */
 export const initTheme = (): Theme => {
-  const theme = getStoredTheme();
+  if (typeof window === 'undefined') return DEFAULT_THEMES.app;
+
+  // Purge l'ancienne clé commune : sans cela, un ancien choix « sombre »
+  // empêcherait le nouveau défaut clair de l'admin de s'appliquer.
+  try {
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    /* stockage indisponible */
+  }
+
+  currentScope = scopeFromPath(window.location.pathname);
+  const theme = getStoredTheme(currentScope);
   applyTheme(theme);
 
-  // Un autre onglet a changé le thème → on suit.
-  if (typeof window !== 'undefined') {
-    window.addEventListener('storage', e => {
-      if (e.key === STORAGE_KEY && isTheme(e.newValue)) {
-        applyTheme(e.newValue);
-        listeners.forEach(fn => fn(e.newValue as Theme));
-      }
-    });
-  }
+  // Un autre onglet a changé le thème de CE même espace → on suit.
+  window.addEventListener('storage', e => {
+    if (e.key !== STORAGE_KEYS[currentScope] || !isTheme(e.newValue)) return;
+    applyTheme(e.newValue);
+    listeners.forEach(fn => fn(e.newValue as Theme));
+  });
 
   return theme;
 };

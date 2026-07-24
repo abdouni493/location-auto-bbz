@@ -206,56 +206,268 @@ body {
 .font-display { font-family: var(--font-display); }
 
 /* ============================================================================
-   COUCHE DE COMPATIBILITÉ
+   MODE SOMBRE — REMAPPAGE DE LA PALETTE TAILWIND
    ----------------------------------------------------------------------------
-   Le code existant utilise beaucoup de classes Tailwind à valeur FIXE
-   (`bg-white`, `bg-gray-50`, `text-gray-900`…) qui, elles, ne suivent pas les
-   variables de thème. On les redirige ici vers les tokens, uniquement en mode
-   sombre, pour éviter les aplats blancs sur fond noir.
+   PROBLÈME : l'application utilise partout des classes Tailwind à valeur FIXE
+   (`bg-white`, `bg-blue-50`, `from-emerald-50`, `border-red-300`, `bg-white/60`…).
+   Ces classes ne suivent pas nos tokens de thème : en mode sombre les cartes
+   restaient blanches sur fond noir.
 
-   `text-white` n'est PAS redéfini : il reste du vrai blanc (texte sur bouton or).
+   SOLUTION : plutôt que de réécrire des milliers de classes, on redéfinit les
+   VARIABLES de palette de Tailwind v4. `bg-blue-50` compile en
+   `background-color: var(--color-blue-50)` ; redéfinir cette variable bascule
+   d'un seul coup les fonds, les DÉGRADÉS (`from-`/`via-`/`to-`), les bordures,
+   les anneaux, les séparateurs et les variantes d'opacité (`bg-white/60`),
+   sans toucher au JSX ni aux animations existantes.
+
+   RÈGLE :
+     • 50 → 300 : surfaces et bordures  → assombries, teinte conservée
+     • 400 → 900 : aplats et accents    → INCHANGÉS (boutons pleins, dégradés)
+     • le TEXTE est traité séparément plus bas : une même variable sert au fond
+       ET au texte, or `text-red-700` doit s'éclaircir alors que `bg-red-700`
+       doit rester sombre.
+
+   `--color-white` et `text-white` ne sont jamais redéfinis : le blanc reste du
+   vrai blanc (texte sur bouton or ou sur carte en dégradé).
    ============================================================================ */
-:root:not([data-theme="light"]) {
-  /* Fonds clairs → surfaces sombres */
-  .bg-white          { background-color: var(--color-surface) !important; }
-  .bg-gray-50,  .bg-slate-50,  .bg-zinc-50,  .bg-neutral-50,
-  .bg-gray-100, .bg-slate-100, .bg-zinc-100, .bg-neutral-100 {
-    background-color: var(--color-surface-2) !important;
-  }
-  .bg-gray-200, .bg-slate-200, .bg-zinc-200, .bg-neutral-200 {
-    background-color: var(--color-surface-3) !important;
-  }
+:root[data-theme="dark"] {
+  /* Teintes de référence : valeurs Tailwind v4 des niveaux 500 (--t-*, base des
+     surfaces) et 400 (--l-*, base des textes éclaircis). */
+  --t-red: oklch(63.7% .237 25.331);       --l-red: oklch(70.4% .191 22.216);
+  --t-orange: oklch(70.5% .213 47.604);    --l-orange: oklch(75% .183 55.934);
+  --t-amber: oklch(76.9% .188 70.08);      --l-amber: oklch(82.8% .189 84.429);
+  --t-yellow: oklch(79.5% .184 86.047);    --l-yellow: oklch(85.2% .199 91.936);
+  --t-lime: oklch(76.8% .233 130.85);      --l-lime: oklch(84.1% .238 128.85);
+  --t-green: oklch(72.3% .219 149.579);    --l-green: oklch(79.2% .209 151.711);
+  --t-emerald: oklch(69.6% .17 162.48);    --l-emerald: oklch(76.5% .177 163.223);
+  --t-teal: oklch(70.4% .14 182.503);      --l-teal: oklch(77.7% .152 181.912);
+  --t-cyan: oklch(71.5% .143 215.221);     --l-cyan: oklch(78.9% .154 211.53);
+  --t-sky: oklch(68.5% .169 237.323);      --l-sky: oklch(74.6% .16 232.661);
+  --t-blue: oklch(62.3% .214 259.815);     --l-blue: oklch(70.7% .165 254.624);
+  --t-indigo: oklch(58.5% .233 277.117);   --l-indigo: oklch(67.3% .182 276.935);
+  --t-violet: oklch(60.6% .25 292.717);    --l-violet: oklch(70.2% .183 293.541);
+  --t-purple: oklch(62.7% .265 303.9);     --l-purple: oklch(71.4% .203 305.504);
+  --t-fuchsia: oklch(66.7% .295 322.15);   --l-fuchsia: oklch(74% .238 322.16);
+  --t-pink: oklch(65.6% .241 354.308);     --l-pink: oklch(71.8% .202 349.761);
+  --t-rose: oklch(64.5% .246 16.439);      --l-rose: oklch(71.2% .194 13.428);
 
-  /* Textes sombres → textes clairs */
+  /* ── Ramps colorées : la teinte est conservée, la clarté est inversée. ──── */
+  --color-red-50:  color-mix(in srgb, var(--t-red) 10%, var(--color-surface));
+  --color-red-100: color-mix(in srgb, var(--t-red) 15%, var(--color-surface));
+  --color-red-200: color-mix(in srgb, var(--t-red) 24%, var(--color-surface));
+  --color-red-300: color-mix(in srgb, var(--t-red) 38%, var(--color-surface));
+
+  --color-orange-50:  color-mix(in srgb, var(--t-orange) 10%, var(--color-surface));
+  --color-orange-100: color-mix(in srgb, var(--t-orange) 15%, var(--color-surface));
+  --color-orange-200: color-mix(in srgb, var(--t-orange) 24%, var(--color-surface));
+  --color-orange-300: color-mix(in srgb, var(--t-orange) 38%, var(--color-surface));
+
+  --color-amber-50:  color-mix(in srgb, var(--t-amber) 10%, var(--color-surface));
+  --color-amber-100: color-mix(in srgb, var(--t-amber) 15%, var(--color-surface));
+  --color-amber-200: color-mix(in srgb, var(--t-amber) 24%, var(--color-surface));
+  --color-amber-300: color-mix(in srgb, var(--t-amber) 38%, var(--color-surface));
+
+  --color-yellow-50:  color-mix(in srgb, var(--t-yellow) 10%, var(--color-surface));
+  --color-yellow-100: color-mix(in srgb, var(--t-yellow) 15%, var(--color-surface));
+  --color-yellow-200: color-mix(in srgb, var(--t-yellow) 24%, var(--color-surface));
+  --color-yellow-300: color-mix(in srgb, var(--t-yellow) 38%, var(--color-surface));
+
+  --color-lime-50:  color-mix(in srgb, var(--t-lime) 10%, var(--color-surface));
+  --color-lime-100: color-mix(in srgb, var(--t-lime) 15%, var(--color-surface));
+  --color-lime-200: color-mix(in srgb, var(--t-lime) 24%, var(--color-surface));
+  --color-lime-300: color-mix(in srgb, var(--t-lime) 38%, var(--color-surface));
+
+  --color-green-50:  color-mix(in srgb, var(--t-green) 10%, var(--color-surface));
+  --color-green-100: color-mix(in srgb, var(--t-green) 15%, var(--color-surface));
+  --color-green-200: color-mix(in srgb, var(--t-green) 24%, var(--color-surface));
+  --color-green-300: color-mix(in srgb, var(--t-green) 38%, var(--color-surface));
+
+  --color-emerald-50:  color-mix(in srgb, var(--t-emerald) 10%, var(--color-surface));
+  --color-emerald-100: color-mix(in srgb, var(--t-emerald) 15%, var(--color-surface));
+  --color-emerald-200: color-mix(in srgb, var(--t-emerald) 24%, var(--color-surface));
+  --color-emerald-300: color-mix(in srgb, var(--t-emerald) 38%, var(--color-surface));
+
+  --color-teal-50:  color-mix(in srgb, var(--t-teal) 10%, var(--color-surface));
+  --color-teal-100: color-mix(in srgb, var(--t-teal) 15%, var(--color-surface));
+  --color-teal-200: color-mix(in srgb, var(--t-teal) 24%, var(--color-surface));
+  --color-teal-300: color-mix(in srgb, var(--t-teal) 38%, var(--color-surface));
+
+  --color-cyan-50:  color-mix(in srgb, var(--t-cyan) 10%, var(--color-surface));
+  --color-cyan-100: color-mix(in srgb, var(--t-cyan) 15%, var(--color-surface));
+  --color-cyan-200: color-mix(in srgb, var(--t-cyan) 24%, var(--color-surface));
+  --color-cyan-300: color-mix(in srgb, var(--t-cyan) 38%, var(--color-surface));
+
+  --color-sky-50:  color-mix(in srgb, var(--t-sky) 10%, var(--color-surface));
+  --color-sky-100: color-mix(in srgb, var(--t-sky) 15%, var(--color-surface));
+  --color-sky-200: color-mix(in srgb, var(--t-sky) 24%, var(--color-surface));
+  --color-sky-300: color-mix(in srgb, var(--t-sky) 38%, var(--color-surface));
+
+  --color-blue-50:  color-mix(in srgb, var(--t-blue) 10%, var(--color-surface));
+  --color-blue-100: color-mix(in srgb, var(--t-blue) 15%, var(--color-surface));
+  --color-blue-200: color-mix(in srgb, var(--t-blue) 24%, var(--color-surface));
+  --color-blue-300: color-mix(in srgb, var(--t-blue) 38%, var(--color-surface));
+
+  --color-indigo-50:  color-mix(in srgb, var(--t-indigo) 10%, var(--color-surface));
+  --color-indigo-100: color-mix(in srgb, var(--t-indigo) 15%, var(--color-surface));
+  --color-indigo-200: color-mix(in srgb, var(--t-indigo) 24%, var(--color-surface));
+  --color-indigo-300: color-mix(in srgb, var(--t-indigo) 38%, var(--color-surface));
+
+  --color-violet-50:  color-mix(in srgb, var(--t-violet) 10%, var(--color-surface));
+  --color-violet-100: color-mix(in srgb, var(--t-violet) 15%, var(--color-surface));
+  --color-violet-200: color-mix(in srgb, var(--t-violet) 24%, var(--color-surface));
+  --color-violet-300: color-mix(in srgb, var(--t-violet) 38%, var(--color-surface));
+
+  --color-purple-50:  color-mix(in srgb, var(--t-purple) 10%, var(--color-surface));
+  --color-purple-100: color-mix(in srgb, var(--t-purple) 15%, var(--color-surface));
+  --color-purple-200: color-mix(in srgb, var(--t-purple) 24%, var(--color-surface));
+  --color-purple-300: color-mix(in srgb, var(--t-purple) 38%, var(--color-surface));
+
+  --color-fuchsia-50:  color-mix(in srgb, var(--t-fuchsia) 10%, var(--color-surface));
+  --color-fuchsia-100: color-mix(in srgb, var(--t-fuchsia) 15%, var(--color-surface));
+  --color-fuchsia-200: color-mix(in srgb, var(--t-fuchsia) 24%, var(--color-surface));
+  --color-fuchsia-300: color-mix(in srgb, var(--t-fuchsia) 38%, var(--color-surface));
+
+  --color-pink-50:  color-mix(in srgb, var(--t-pink) 10%, var(--color-surface));
+  --color-pink-100: color-mix(in srgb, var(--t-pink) 15%, var(--color-surface));
+  --color-pink-200: color-mix(in srgb, var(--t-pink) 24%, var(--color-surface));
+  --color-pink-300: color-mix(in srgb, var(--t-pink) 38%, var(--color-surface));
+
+  --color-rose-50:  color-mix(in srgb, var(--t-rose) 10%, var(--color-surface));
+  --color-rose-100: color-mix(in srgb, var(--t-rose) 15%, var(--color-surface));
+  --color-rose-200: color-mix(in srgb, var(--t-rose) 24%, var(--color-surface));
+  --color-rose-300: color-mix(in srgb, var(--t-rose) 38%, var(--color-surface));
+
+  /* ── Ramps neutres : la « feuille de papier » devient une surface sombre. ─ */
+  --color-gray-50: var(--color-surface-2);    --color-gray-100: var(--color-surface-2);
+  --color-gray-200: var(--color-surface-3);   --color-gray-300: var(--color-surface-3);
+  --color-slate-50: var(--color-surface-2);   --color-slate-100: var(--color-surface-2);
+  --color-slate-200: var(--color-surface-3);  --color-slate-300: var(--color-surface-3);
+  --color-zinc-50: var(--color-surface-2);    --color-zinc-100: var(--color-surface-2);
+  --color-zinc-200: var(--color-surface-3);   --color-zinc-300: var(--color-surface-3);
+  --color-neutral-50: var(--color-surface-2); --color-neutral-100: var(--color-surface-2);
+  --color-neutral-200: var(--color-surface-3);--color-neutral-300: var(--color-surface-3);
+  --color-stone-50: var(--color-surface-2);   --color-stone-100: var(--color-surface-2);
+  --color-stone-200: var(--color-surface-3);  --color-stone-300: var(--color-surface-3);
+}
+
+/* ============================================================================
+   MODE SOMBRE — CORRECTIFS PONCTUELS
+   ----------------------------------------------------------------------------
+   Ce que le remappage de variables ne peut pas couvrir, parce qu'une variable
+   sert à la fois au fond et au texte.
+   ============================================================================ */
+:root[data-theme="dark"] {
+  /* ── Blancs opaques utilisés comme surface de carte ──────────────────────
+     Les faibles opacités (/10 à /30) sont des voiles sur cartes colorées : on
+     les laisse tranquilles. */
+  .bg-white { background-color: var(--color-surface) !important; }
+  .bg-white\/40, .bg-white\/50, .bg-white\/60, .bg-white\/70,
+  .bg-white\/75, .bg-white\/80, .bg-white\/85, .bg-white\/90,
+  .bg-white\/95 {
+    background-color: color-mix(in srgb, var(--color-surface-2) 82%, transparent) !important;
+  }
+  .from-white { --tw-gradient-from: var(--color-surface) !important; }
+  .via-white  { --tw-gradient-via:  var(--color-surface-2) !important; }
+  .to-white   { --tw-gradient-to:   var(--color-surface) !important; }
+
+  /* ── Texte neutre : la rampe est inversée ─────────────────────────────── */
   .text-black,
-  .text-gray-900, .text-slate-900, .text-zinc-900, .text-neutral-900,
-  .text-gray-800, .text-slate-800, .text-zinc-800, .text-neutral-800 {
+  .text-gray-900, .text-slate-900, .text-zinc-900, .text-neutral-900, .text-stone-900,
+  .text-gray-800, .text-slate-800, .text-zinc-800, .text-neutral-800, .text-stone-800 {
     color: var(--color-text) !important;
   }
-  .text-gray-700, .text-slate-700, .text-zinc-700, .text-neutral-700,
-  .text-gray-600, .text-slate-600, .text-zinc-600, .text-neutral-600 {
+  .text-gray-700, .text-slate-700, .text-zinc-700, .text-neutral-700, .text-stone-700,
+  .text-gray-600, .text-slate-600, .text-zinc-600, .text-neutral-600, .text-stone-600 {
     color: var(--color-text-soft) !important;
   }
-  .text-gray-500, .text-slate-500, .text-zinc-500, .text-neutral-500,
-  .text-gray-400, .text-slate-400, .text-zinc-400, .text-neutral-400 {
+  .text-gray-500, .text-slate-500, .text-zinc-500, .text-neutral-500, .text-stone-500,
+  .text-gray-400, .text-slate-400, .text-zinc-400, .text-neutral-400, .text-stone-400 {
     color: var(--color-text-muted) !important;
   }
-
-  /* Bordures claires → bordures sombres */
-  .border-white,
-  .border-gray-100, .border-slate-100, .border-zinc-100, .border-neutral-100,
-  .border-gray-200, .border-slate-200, .border-zinc-200, .border-neutral-200,
-  .border-gray-300, .border-slate-300, .border-zinc-300, .border-neutral-300 {
-    border-color: var(--color-border-soft) !important;
+  /* …et les teintes claires (souvent posées sur une carte en dégradé) doivent
+     le rester malgré le remappage des variables ci-dessus. */
+  .text-gray-300, .text-slate-300, .text-zinc-300, .text-neutral-300, .text-stone-300,
+  .text-gray-200, .text-slate-200, .text-zinc-200, .text-neutral-200, .text-stone-200,
+  .text-gray-100, .text-slate-100, .text-zinc-100, .text-neutral-100, .text-stone-100,
+  .text-gray-50,  .text-slate-50,  .text-zinc-50,  .text-neutral-50,  .text-stone-50 {
+    color: var(--color-text-soft) !important;
   }
 
-  /* Champs de formulaire natifs */
+  /* ── Texte coloré : 600-900 s'éclaircissent, 50-300 restent pâles ─────── */
+  .text-red-600, .text-red-700 { color: var(--l-red) !important; }
+  .text-red-800, .text-red-900 { color: color-mix(in srgb, var(--l-red) 72%, #fff) !important; }
+  .text-red-50, .text-red-100, .text-red-200, .text-red-300 { color: color-mix(in srgb, var(--l-red) 42%, #fff) !important; }
+
+  .text-orange-600, .text-orange-700 { color: var(--l-orange) !important; }
+  .text-orange-800, .text-orange-900 { color: color-mix(in srgb, var(--l-orange) 72%, #fff) !important; }
+  .text-orange-50, .text-orange-100, .text-orange-200, .text-orange-300 { color: color-mix(in srgb, var(--l-orange) 42%, #fff) !important; }
+
+  .text-amber-600, .text-amber-700 { color: var(--l-amber) !important; }
+  .text-amber-800, .text-amber-900 { color: color-mix(in srgb, var(--l-amber) 72%, #fff) !important; }
+  .text-amber-50, .text-amber-100, .text-amber-200, .text-amber-300 { color: color-mix(in srgb, var(--l-amber) 42%, #fff) !important; }
+
+  .text-yellow-600, .text-yellow-700 { color: var(--l-yellow) !important; }
+  .text-yellow-800, .text-yellow-900 { color: color-mix(in srgb, var(--l-yellow) 72%, #fff) !important; }
+  .text-yellow-50, .text-yellow-100, .text-yellow-200, .text-yellow-300 { color: color-mix(in srgb, var(--l-yellow) 42%, #fff) !important; }
+
+  .text-lime-600, .text-lime-700 { color: var(--l-lime) !important; }
+  .text-lime-800, .text-lime-900 { color: color-mix(in srgb, var(--l-lime) 72%, #fff) !important; }
+  .text-lime-50, .text-lime-100, .text-lime-200, .text-lime-300 { color: color-mix(in srgb, var(--l-lime) 42%, #fff) !important; }
+
+  .text-green-600, .text-green-700 { color: var(--l-green) !important; }
+  .text-green-800, .text-green-900 { color: color-mix(in srgb, var(--l-green) 72%, #fff) !important; }
+  .text-green-50, .text-green-100, .text-green-200, .text-green-300 { color: color-mix(in srgb, var(--l-green) 42%, #fff) !important; }
+
+  .text-emerald-600, .text-emerald-700 { color: var(--l-emerald) !important; }
+  .text-emerald-800, .text-emerald-900 { color: color-mix(in srgb, var(--l-emerald) 72%, #fff) !important; }
+  .text-emerald-50, .text-emerald-100, .text-emerald-200, .text-emerald-300 { color: color-mix(in srgb, var(--l-emerald) 42%, #fff) !important; }
+
+  .text-teal-600, .text-teal-700 { color: var(--l-teal) !important; }
+  .text-teal-800, .text-teal-900 { color: color-mix(in srgb, var(--l-teal) 72%, #fff) !important; }
+  .text-teal-50, .text-teal-100, .text-teal-200, .text-teal-300 { color: color-mix(in srgb, var(--l-teal) 42%, #fff) !important; }
+
+  .text-cyan-600, .text-cyan-700 { color: var(--l-cyan) !important; }
+  .text-cyan-800, .text-cyan-900 { color: color-mix(in srgb, var(--l-cyan) 72%, #fff) !important; }
+  .text-cyan-50, .text-cyan-100, .text-cyan-200, .text-cyan-300 { color: color-mix(in srgb, var(--l-cyan) 42%, #fff) !important; }
+
+  .text-sky-600, .text-sky-700 { color: var(--l-sky) !important; }
+  .text-sky-800, .text-sky-900 { color: color-mix(in srgb, var(--l-sky) 72%, #fff) !important; }
+  .text-sky-50, .text-sky-100, .text-sky-200, .text-sky-300 { color: color-mix(in srgb, var(--l-sky) 42%, #fff) !important; }
+
+  .text-blue-600, .text-blue-700 { color: var(--l-blue) !important; }
+  .text-blue-800, .text-blue-900 { color: color-mix(in srgb, var(--l-blue) 72%, #fff) !important; }
+  .text-blue-50, .text-blue-100, .text-blue-200, .text-blue-300 { color: color-mix(in srgb, var(--l-blue) 42%, #fff) !important; }
+
+  .text-indigo-600, .text-indigo-700 { color: var(--l-indigo) !important; }
+  .text-indigo-800, .text-indigo-900 { color: color-mix(in srgb, var(--l-indigo) 72%, #fff) !important; }
+  .text-indigo-50, .text-indigo-100, .text-indigo-200, .text-indigo-300 { color: color-mix(in srgb, var(--l-indigo) 42%, #fff) !important; }
+
+  .text-violet-600, .text-violet-700 { color: var(--l-violet) !important; }
+  .text-violet-800, .text-violet-900 { color: color-mix(in srgb, var(--l-violet) 72%, #fff) !important; }
+  .text-violet-50, .text-violet-100, .text-violet-200, .text-violet-300 { color: color-mix(in srgb, var(--l-violet) 42%, #fff) !important; }
+
+  .text-purple-600, .text-purple-700 { color: var(--l-purple) !important; }
+  .text-purple-800, .text-purple-900 { color: color-mix(in srgb, var(--l-purple) 72%, #fff) !important; }
+  .text-purple-50, .text-purple-100, .text-purple-200, .text-purple-300 { color: color-mix(in srgb, var(--l-purple) 42%, #fff) !important; }
+
+  .text-fuchsia-600, .text-fuchsia-700 { color: var(--l-fuchsia) !important; }
+  .text-fuchsia-800, .text-fuchsia-900 { color: color-mix(in srgb, var(--l-fuchsia) 72%, #fff) !important; }
+  .text-fuchsia-50, .text-fuchsia-100, .text-fuchsia-200, .text-fuchsia-300 { color: color-mix(in srgb, var(--l-fuchsia) 42%, #fff) !important; }
+
+  .text-pink-600, .text-pink-700 { color: var(--l-pink) !important; }
+  .text-pink-800, .text-pink-900 { color: color-mix(in srgb, var(--l-pink) 72%, #fff) !important; }
+  .text-pink-50, .text-pink-100, .text-pink-200, .text-pink-300 { color: color-mix(in srgb, var(--l-pink) 42%, #fff) !important; }
+
+  .text-rose-600, .text-rose-700 { color: var(--l-rose) !important; }
+  .text-rose-800, .text-rose-900 { color: color-mix(in srgb, var(--l-rose) 72%, #fff) !important; }
+  .text-rose-50, .text-rose-100, .text-rose-200, .text-rose-300 { color: color-mix(in srgb, var(--l-rose) 42%, #fff) !important; }
+
+  /* Bordure blanche pleine → liseré discret (les `border-white/xx` des cartes
+     colorées restent inchangées). */
+  .border-white { border-color: var(--color-border-soft) !important; }
+
+  /* Champs de formulaire natifs (calendriers, sélecteurs de couleur…) */
   input, textarea, select { color-scheme: dark; }
-
-  /* Les vignettes de couleur claire des badges restent lisibles */
-  .divide-gray-200 > * + *, .divide-slate-200 > * + * {
-    border-color: var(--color-border-soft) !important;
-  }
 }
 
 /* ============================================================================

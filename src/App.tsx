@@ -29,6 +29,7 @@ import { setupErrorInterceptor } from './utils/errorInterceptor';
 import { DebugAuth } from './utils/debugAuth';
 import { sessionService } from './utils/sessionService';
 import { PermissionsService } from './services/permissionsService';
+import { scopeFromPath, setThemeScope } from './utils/theme';
 import type { WorkerPermissions } from './types';
 
 // Initialize global error interceptor on load
@@ -147,6 +148,12 @@ export default function App() {
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
     document.documentElement.lang = lang;
   }, [lang]);
+
+  // L'admin et le site public ont chacun leur thème (clair / sombre par
+  // défaut) : on réapplique celui de l'espace visité à chaque navigation.
+  useEffect(() => {
+    setThemeScope(scopeFromPath(location.pathname));
+  }, [location.pathname]);
 
   // Charge les permissions dès qu'un utilisateur est connecté : la sidebar
   // n'affiche que les onglets autorisés.

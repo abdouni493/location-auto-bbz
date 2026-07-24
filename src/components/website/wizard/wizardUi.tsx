@@ -34,7 +34,7 @@ export const fromYmd = (s: string): Date => {
 
 // ─── Styles d'inputs partagés ─────────────────────────────────────────────────
 export const inputStyle: React.CSSProperties = {
-  background: '#FFFFFF',
+  background: 'var(--color-surface)',
   border: '1px solid var(--color-border-soft)',
   color: 'var(--color-text)',
 };
