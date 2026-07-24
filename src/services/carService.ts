@@ -24,6 +24,14 @@ export interface Car {
   mileage?: number
   fuel_level?: 'full' | 'half' | 'quarter' | 'eighth' | 'empty'
   is_hidden_from_site?: boolean
+  // Propriétaire : 'personal' (agence) ou 'third_party' (voiture d'un tiers)
+  owner_type?: 'personal' | 'third_party'
+  owner_name?: string
+  owner_phone?: string
+  /** DZD que l'agence garde par jour de location (voiture d'un tiers). */
+  agency_daily_share?: number
+  /** Tarifs en devises étrangères : { USD: { active, rate, priceDay, … } } */
+  currency_config?: Record<string, any>
 }
 
 export interface AddCarData {
@@ -46,6 +54,11 @@ export interface AddCarData {
   price_month?: number
   deposit?: number
   mileage?: number
+  owner_type?: 'personal' | 'third_party'
+  owner_name?: string
+  owner_phone?: string
+  agency_daily_share?: number
+  currency_config?: Record<string, any>
 }
 
 /**
@@ -90,6 +103,11 @@ export async function addCar(carData: AddCarData): Promise<{ success: boolean; c
         price_month: carData.price_month,
         deposit: carData.deposit,
         mileage: carData.mileage,
+        owner_type: carData.owner_type ?? 'personal',
+        owner_name: carData.owner_name ?? null,
+        owner_phone: carData.owner_phone ?? null,
+        agency_daily_share: carData.agency_daily_share ?? 0,
+        currency_config: carData.currency_config ?? {},
       })
       .select()
       .single()

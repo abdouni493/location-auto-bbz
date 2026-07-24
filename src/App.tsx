@@ -8,6 +8,7 @@ import { CarsPage } from './components/CarsPage';
 import { MaintenancePage } from './components/MaintenancePage';
 import { AgenciesPage } from './components/AgenciesPage';
 import { ClientsPage } from './components/ClientsPage';
+import { EntreprisesPage } from './components/EntreprisesPage';
 import { EquipePage } from './components/EquipePage';
 import { ExpensesPage } from './components/ExpensesPage';
 import { ConfigPage } from './components/ConfigPage';
@@ -27,6 +28,8 @@ import { DatabaseService } from './services/DatabaseService';
 import { setupErrorInterceptor } from './utils/errorInterceptor';
 import { DebugAuth } from './utils/debugAuth';
 import { sessionService } from './utils/sessionService';
+import { PermissionsService } from './services/permissionsService';
+import type { WorkerPermissions } from './types';
 
 // Initialize global error interceptor on load
 setupErrorInterceptor();
@@ -52,6 +55,13 @@ export default function App() {
   const [isLoadingAgenciesForWebsite, setIsLoadingAgenciesForWebsite] = useState(true);
   const [maintenanceAlertsCount, setMaintenanceAlertsCount] = useState(0);
   const [webOrdersCount, setWebOrdersCount] = useState(0);
+  /**
+   * Permissions de l'utilisateur connecté.
+   * `null` = administrateur (accès complet) ; sinon la liste des pages et des
+   * boutons que l'admin lui a accordés depuis l'écran « Permissions ».
+   */
+  const [permissions, setPermissions] = useState<WorkerPermissions | null>(null);
+  const [isAdminUser, setIsAdminUser] = useState(true);
   
   // Refs to prevent multiple listener initialization (especially important in StrictMode dev environment)
   const authListenerInitialized = useRef(false);
@@ -71,6 +81,7 @@ export default function App() {
       '/vehicules': 'vehicles',
       '/maintenance': 'maintenance',
       '/clients': 'clients',
+      '/entreprises': 'entreprises',
       '/agences': 'agencies',
       '/equipe': 'team',
       '/personalisation': 'personalization',
@@ -113,6 +124,7 @@ export default function App() {
       'vehicles': '/vehicules',
       'maintenance': '/maintenance',
       'clients': '/clients',
+      'entreprises': '/entreprises',
       'agencies': '/agences',
       'team': '/equipe',
       'personalization': '/personalisation',
@@ -135,6 +147,26 @@ export default function App() {
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
     document.documentElement.lang = lang;
   }, [lang]);
+
+  // Charge les permissions dès qu'un utilisateur est connecté : la sidebar
+  // n'affiche que les onglets autorisés.
+  useEffect(() => {
+    if (!user || isAuthLoading) return;
+    let cancelled = false;
+
+    PermissionsService.getMine()
+      .then(({ isAdmin, permissions }) => {
+        if (cancelled) return;
+        setIsAdminUser(isAdmin);
+        setPermissions(isAdmin ? null : permissions);
+      })
+      .catch(err => {
+        console.error('[Auth] permissions indisponibles:', err);
+        if (!cancelled) { setIsAdminUser(true); setPermissions(null); }
+      });
+
+    return () => { cancelled = true; };
+  }, [user, isAuthLoading]);
 
   // Load maintenance alerts count when user is authenticated
   useEffect(() => {
@@ -460,6 +492,7 @@ export default function App() {
         '/vehicules': 'vehicles',
         '/maintenance': 'maintenance',
         '/clients': 'clients',
+        '/entreprises': 'entreprises',
         '/agences': 'agencies',
         '/equipe': 'team',
         '/personalisation': 'personalization',
@@ -493,6 +526,8 @@ export default function App() {
           return <AgenciesPage lang={lang} />;
         case 'clients':
           return <ClientsPage lang={lang} isAuthLoading={isAuthLoading} user={user} />;
+        case 'entreprises':
+          return <EntreprisesPage lang={lang} />;
         case 'team':
           return <EquipePage lang={lang} />;
         case 'expenses':
@@ -566,6 +601,8 @@ export default function App() {
           setActiveTab={handleTabChange}
           alertsCount={maintenanceAlertsCount}
           webOrdersCount={webOrdersCount}
+          // Un employé ne voit que les onglets cochés dans ses permissions.
+          allowedTabs={isAdminUser || !permissions ? null : Object.keys(permissions)}
         />
         
         <div className="flex-1 flex flex-col min-w-0">
@@ -683,6 +720,7 @@ export default function App() {
       <Route path="/vehicules" element={<ProtectedRoute />} />
       <Route path="/maintenance" element={<ProtectedRoute />} />
       <Route path="/clients" element={<ProtectedRoute />} />
+      <Route path="/entreprises" element={<ProtectedRoute />} />
       <Route path="/agences" element={<ProtectedRoute />} />
       <Route path="/equipe" element={<ProtectedRoute />} />
       <Route path="/personalisation" element={<ProtectedRoute />} />

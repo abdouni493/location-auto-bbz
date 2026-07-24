@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Upload, FileText, Loader2, X } from 'lucide-react';
 import { useWizard } from './WizardContext';
 import { uploadClientProfilePhoto, uploadClientDocument } from '../../../services/uploadClientImage';
+import { uploadFlightTicket } from '../../../services/uploadFlightTicket';
+import { Plane } from 'lucide-react';
 import { SectionCard, SectionTitle, FieldLabel, inputClass, inputStyle, focusInput, blurInput, C, ALGERIAN_WILAYAS } from './wizardUi';
 
 /**
@@ -10,9 +12,10 @@ import { SectionCard, SectionTitle, FieldLabel, inputClass, inputStyle, focusInp
  * (photo, identité, permis, document additionnel, documents scannés, adresse).
  */
 export const StepPersonalInfo: React.FC = () => {
-  const { lang, personal, setPersonal } = useWizard();
+  const { lang, personal, setPersonal, flight, setFlight } = useWizard();
 
   const [uploadingProfile, setUploadingProfile] = useState(false);
+  const [uploadingTicket, setUploadingTicket] = useState(false);
   const [uploadingDocument, setUploadingDocument] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -61,6 +64,25 @@ export const StepPersonalInfo: React.FC = () => {
     }
   };
 
+  const handleTicketUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError(null);
+    setUploadingTicket(true);
+    try {
+      const result = await uploadFlightTicket(file);
+      if (result.success && result.url) {
+        setFlight(prev => ({ ...prev, ticketImage: result.url! }));
+      } else {
+        setUploadError(result.error || 'Upload failed');
+      }
+    } catch {
+      setUploadError('Upload error');
+    } finally {
+      setUploadingTicket(false);
+    }
+  };
+
   const removeDocument = (index: number) => {
     setPersonal(prev => ({ ...prev, scannedDocuments: prev.scannedDocuments?.filter((_, i) => i !== index) || [] }));
   };
@@ -72,7 +94,7 @@ export const StepPersonalInfo: React.FC = () => {
         <SectionTitle>📸 {{ fr: 'Photo (optionnelle)', ar: 'صورة (اختياري)' }[lang]}</SectionTitle>
         <div className="flex items-center gap-5">
           <div className="w-20 h-20 rounded-2xl overflow-hidden flex-shrink-0 flex items-center justify-center"
-            style={{ background: 'rgba(220,38,38,0.05)', border: '1px solid rgba(220,38,38,0.16)' }}>
+            style={{ background: 'var(--color-gold-soft)', border: '1px solid var(--color-vel-border-gold)' }}>
             {personal.photo
               ? <img src={personal.photo} alt="Photo" className="w-full h-full object-cover" />
               : <span className="text-3xl">📷</span>
@@ -81,7 +103,7 @@ export const StepPersonalInfo: React.FC = () => {
           <label>
             <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" disabled={uploadingProfile} />
             <span className={`cursor-pointer inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${uploadingProfile ? 'opacity-50' : ''}`}
-              style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.25)', color: C.accent, fontFamily: 'var(--font-display)' }}>
+              style={{ background: 'var(--color-gold-soft)', border: '1px solid var(--color-vel-border-gold)', color: C.accent, fontFamily: 'var(--font-display)' }}>
               {uploadingProfile ? <><Loader2 size={16} className="animate-spin" /> {lang === 'fr' ? 'Envoi…' : 'جاري…'}</> : <><Upload size={16} /> {lang === 'fr' ? 'Charger' : 'تحميل'}</>}
             </span>
           </label>
@@ -193,7 +215,7 @@ export const StepPersonalInfo: React.FC = () => {
                 )}
                 <button onClick={() => removeDocument(index)}
                   className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ background: '#EF4444' }}>
+                  style={{ background: 'var(--color-act-delete)' }}>
                   <X size={12} color="white" />
                 </button>
               </div>
@@ -205,6 +227,132 @@ export const StepPersonalInfo: React.FC = () => {
             <p className="text-sm">{{ fr: 'Aucun document téléchargé', ar: 'لم يتم تحميل أي وثيقة' }[lang]}</p>
           </div>
         )}
+      </SectionCard>
+
+      {/* Informations de vol — obligatoires pour préparer l'accueil à l'aéroport */}
+      <SectionCard>
+        <SectionTitle>✈️ {{ fr: 'Informations de vol', ar: 'معلومات الرحلة' }[lang]}</SectionTitle>
+
+        <p className="text-xs mb-4" style={{ color: 'var(--color-text-muted)' }}>
+          {{
+            fr: "Ces informations nous permettent de vous accueillir à l'heure d'arrivée de votre vol.",
+            ar: 'تسمح لنا هذه المعلومات باستقبالك في وقت وصول رحلتك.',
+          }[lang]}
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <FieldLabel>{{ fr: 'Numéro de vol *', ar: 'رقم الرحلة *' }[lang]}</FieldLabel>
+            <input
+              name="flightNumber"
+              value={flight.number}
+              onChange={e => setFlight(prev => ({ ...prev, number: e.target.value }))}
+              className={inputClass}
+              style={inputStyle}
+              placeholder={lang === 'fr' ? 'ex : AH 1006' : 'مثال: AH 1006'}
+              onFocus={focusInput}
+              onBlur={blurInput}
+            />
+          </div>
+          <div>
+            <FieldLabel>{{ fr: "Date d'arrivée *", ar: 'تاريخ الوصول *' }[lang]}</FieldLabel>
+            <input
+              type="date"
+              value={flight.date}
+              onChange={e => setFlight(prev => ({ ...prev, date: e.target.value }))}
+              className={inputClass}
+              style={inputStyle}
+              onFocus={focusInput}
+              onBlur={blurInput}
+            />
+          </div>
+          <div>
+            <FieldLabel>{{ fr: "Heure d'arrivée *", ar: 'وقت الوصول *' }[lang]}</FieldLabel>
+            <input
+              type="time"
+              value={flight.time}
+              onChange={e => setFlight(prev => ({ ...prev, time: e.target.value }))}
+              className={inputClass}
+              style={inputStyle}
+              onFocus={focusInput}
+              onBlur={blurInput}
+            />
+          </div>
+        </div>
+
+        {/* Justificatif du billet */}
+        <div className="mt-5">
+          <FieldLabel>
+            {{ fr: 'Justificatif du billet * (image ou PDF)', ar: 'إثبات التذكرة * (صورة أو PDF)' }[lang]}
+          </FieldLabel>
+
+          {flight.ticketImage ? (
+            <div
+              className="relative rounded-xl overflow-hidden group"
+              style={{ border: '1px solid var(--color-vel-border-gold)', background: 'var(--color-surface-2)' }}
+            >
+              {flight.ticketImage.toLowerCase().endsWith('.pdf') ? (
+                <a
+                  href={flight.ticketImage}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 p-4"
+                  style={{ color: 'var(--color-gold)' }}
+                >
+                  <FileText size={28} />
+                  <span className="text-sm font-bold">
+                    {{ fr: 'Billet PDF téléversé — cliquer pour ouvrir', ar: 'تم رفع تذكرة PDF — انقر للفتح' }[lang]}
+                  </span>
+                </a>
+              ) : (
+                <img
+                  src={flight.ticketImage}
+                  alt="Billet"
+                  className="w-full max-h-56 object-contain cursor-pointer"
+                  onClick={() => window.open(flight.ticketImage, '_blank')}
+                />
+              )}
+              <button
+                onClick={() => setFlight(prev => ({ ...prev, ticketImage: '' }))}
+                className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-opacity"
+                style={{ background: 'var(--color-act-delete)' }}
+                aria-label={lang === 'fr' ? 'Retirer le justificatif' : 'إزالة الإثبات'}
+              >
+                <X size={14} color="white" />
+              </button>
+            </div>
+          ) : (
+            <label
+              className="flex flex-col items-center justify-center gap-2 py-8 rounded-xl cursor-pointer transition-colors"
+              style={{
+                border: '2px dashed var(--color-vel-border-gold)',
+                background: 'var(--color-gold-soft)',
+                color: 'var(--color-text-muted)',
+              }}
+            >
+              {uploadingTicket ? (
+                <Loader2 size={28} className="animate-spin" style={{ color: 'var(--color-gold)' }} />
+              ) : (
+                <Plane size={28} style={{ color: 'var(--color-gold)' }} />
+              )}
+              <span className="text-sm font-bold">
+                {uploadingTicket
+                  ? { fr: 'Envoi en cours…', ar: 'جاري الإرسال…' }[lang]
+                  : { fr: 'Téléverser le billet', ar: 'رفع التذكرة' }[lang]}
+              </span>
+              <span className="text-[11px]" style={{ color: 'var(--color-text-dim)' }}>
+                {{ fr: 'JPG, PNG ou PDF — 8 Mo maximum', ar: 'JPG أو PNG أو PDF — 8 ميغا كحد أقصى' }[lang]}
+              </span>
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={handleTicketUpload}
+                disabled={uploadingTicket}
+              />
+            </label>
+          )}
+        </div>
       </SectionCard>
 
       {/* Address */}

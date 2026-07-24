@@ -250,6 +250,13 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
     setCurrentTemplateId(template.id);
     setEditingField(null);
   };
+
+  /**
+   * Début de glisser-déposer d'un champ sur le canevas.
+   * On mémorise l'écart entre le curseur et le coin du champ pour que celui-ci
+   * ne « saute » pas sous la souris pendant le déplacement.
+   */
+  const handleFieldMouseDown = (fieldName: string, e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const field = template?.[fieldName];
     if (!field) return;

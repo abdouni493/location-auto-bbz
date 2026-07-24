@@ -1190,180 +1190,184 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ lang, isAuthLoadin
         );
       })()}
 
-      {/* Enhanced Header with Better Design */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 p-8 rounded-3xl text-white shadow-2xl">
-        {/* Animated Background Elements */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-16 translate-x-16"></div>
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full translate-y-12 -translate-x-12"></div>
+      {/* ── En-tête ─────────────────────────────────────────────────────
+          Les sections d'ALERTES au-dessus sont volontairement inchangées :
+          seuls l'en-tête, les indicateurs et les graphiques sont redessinés. */}
+      <motion.header
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+        className="relative overflow-hidden rounded-3xl p-8"
+        style={{
+          background: 'linear-gradient(135deg, var(--color-surface), var(--color-surface-2))',
+          border: '1px solid var(--color-vel-border-gold)',
+          boxShadow: 'var(--shadow-lift)',
+        }}
+      >
+        {/* Liseré doré supérieur */}
+        <span
+          className="absolute inset-x-0 top-0 h-px"
+          style={{ background: 'linear-gradient(90deg, transparent, var(--color-gold), transparent)' }}
+        />
+        {/* Halo discret */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -top-24 -right-24 w-64 h-64 rounded-full"
+          style={{ background: 'var(--color-gold-glow)', filter: 'blur(80px)', opacity: 0.5 }}
+        />
 
         <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-8">
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             <motion.h1
-              initial={{ x: -50, opacity: 0 }}
+              initial={{ x: -20, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.4 }}
-              className="text-4xl font-black tracking-tighter uppercase flex items-center gap-4"
+              transition={{ delay: 0.1, duration: 0.4 }}
+              className="text-3xl sm:text-4xl font-black tracking-tighter uppercase flex items-center gap-4"
+              style={{ color: 'var(--color-text)' }}
             >
-              <motion.span
-                animate={{ rotate: [0, 10, -10, 0] }}
-                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                className="text-5xl"
+              <span
+                className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shrink-0"
+                style={{
+                  background: 'linear-gradient(135deg, var(--color-gold-light), var(--color-gold))',
+                  boxShadow: 'var(--shadow-gold)',
+                }}
               >
                 📊
-              </motion.span>
+              </span>
               {lang === 'fr' ? 'Tableau de Bord' : 'لوحة القيادة'}
             </motion.h1>
+
             <motion.p
-              initial={{ x: -50, opacity: 0 }}
+              initial={{ x: -20, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.6 }}
-              className="text-blue-100 font-bold text-sm uppercase tracking-[0.3em]"
+              transition={{ delay: 0.18, duration: 0.4 }}
+              className="font-bold text-xs uppercase tracking-[0.3em]"
+              style={{ color: 'var(--color-gold)' }}
             >
-              {lang === 'fr' ? 'Vue d\'ensemble Premium' : 'نظرة عامة مميزة'}
+              {lang === 'fr' ? "Vue d'ensemble de l'activité" : 'نظرة عامة على النشاط'}
             </motion.p>
+
             <motion.p
-              initial={{ x: -50, opacity: 0 }}
+              initial={{ x: -20, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
-              transition={{ delay: 0.8 }}
-              className="text-blue-200 text-sm font-medium mt-3 flex items-center gap-2"
+              transition={{ delay: 0.26, duration: 0.4 }}
+              className="text-sm font-medium mt-3 flex items-center gap-2"
+              style={{ color: 'var(--color-text-muted)' }}
             >
-              <span className="text-lg">🕐</span>
+              <span className="text-base">🕐</span>
               {currentTime.toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'ar-DZ', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+                hour: '2-digit', minute: '2-digit',
               })}
             </motion.p>
           </div>
 
-          <div className="flex gap-4">
-            <div className="text-center">
-              <div className="text-3xl font-black text-white">
-                {stats.totalClients}
-              </div>
-              <div className="text-xs text-blue-200 uppercase tracking-widest">
-                {lang === 'fr' ? 'Clients' : 'العملاء'}
-              </div>
-            </div>
-          </div>
+          {/* Chiffre d'affaires mis en avant */}
+          <motion.div
+            initial={{ scale: 0.94, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.3, type: 'spring', stiffness: 260, damping: 26 }}
+            className="rounded-2xl px-6 py-5 text-center shrink-0"
+            style={{
+              background: 'var(--color-gold-soft)',
+              border: '1px solid var(--color-vel-border-gold)',
+            }}
+          >
+            <p className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-muted)' }}>
+              {lang === 'fr' ? 'Revenus du mois' : 'إيرادات الشهر'}
+            </p>
+            <p className="text-3xl font-black mt-1" style={{ color: 'var(--color-gold)' }}>
+              {Math.round(stats.monthlyRevenue || 0).toLocaleString('fr-FR')}
+              <span className="text-sm ml-1">DA</span>
+            </p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-dim)' }}>
+              {lang === 'fr' ? 'Total encaissé' : 'الإجمالي المحصّل'}{' : '}
+              {Math.round(stats.totalRevenue || 0).toLocaleString('fr-FR')} DA
+            </p>
+          </motion.div>
         </div>
-      </div>
+      </motion.header>
 
-      {/* Enhanced Key Metrics with Better Gradients */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* ── Indicateurs clés ───────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {([
+          {
+            key: 'clients',
+            label: { fr: 'Clients', ar: 'العملاء' },
+            value: String(stats.totalClients),
+            hint: { fr: 'Total enregistrés', ar: 'إجمالي المسجلين' },
+            accent: 'var(--color-act-edit)',
+            icon: '👥',
+          },
+          {
+            key: 'active',
+            label: { fr: 'Locations en cours', ar: 'الإيجارات الجارية' },
+            value: String(stats.activeReservations),
+            hint: { fr: `${stats.totalReservations} au total`, ar: `${stats.totalReservations} إجمالاً` },
+            accent: 'var(--color-act-success)',
+            icon: '🔑',
+          },
+          {
+            key: 'fleet',
+            label: { fr: 'Véhicules disponibles', ar: 'المركبات المتاحة' },
+            value: `${stats.availableCars}/${stats.totalCars}`,
+            hint: {
+              fr: stats.totalCars > 0 ? `${Math.round((stats.availableCars / stats.totalCars) * 100)} % de la flotte` : '—',
+              ar: stats.totalCars > 0 ? `${Math.round((stats.availableCars / stats.totalCars) * 100)} % من الأسطول` : '—',
+            },
+            accent: 'var(--color-gold)',
+            icon: '🚗',
+          },
+          {
+            key: 'alerts',
+            label: { fr: 'Alertes maintenance', ar: 'تنبيهات الصيانة' },
+            value: String(stats.maintenanceAlerts),
+            hint: {
+              fr: stats.maintenanceAlerts > 0 ? 'À traiter' : 'Rien à signaler',
+              ar: stats.maintenanceAlerts > 0 ? 'للمعالجة' : 'لا شيء',
+            },
+            accent: stats.maintenanceAlerts > 0 ? 'var(--color-act-warning)' : 'var(--color-act-success)',
+            icon: '🔧',
+          },
+        ]).map((kpi, i) => (
+          <motion.div
+            key={kpi.key}
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 + i * 0.07, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            whileHover={{ y: -4 }}
+            className="relative overflow-hidden rounded-2xl p-5"
+            style={{
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              boxShadow: 'var(--shadow-soft)',
+            }}
+          >
+            <span className="absolute inset-x-0 top-0 h-1" style={{ background: kpi.accent }} />
 
-        <motion.div
-          initial={{ opacity: 0, y: 30, rotateY: -15 }}
-          animate={{ opacity: 1, y: 0, rotateY: 0 }}
-          transition={{ delay: 0.4, type: "spring", stiffness: 100 }}
-          whileHover={{ scale: 1.05, rotateY: 5 }}
-          className="relative overflow-hidden bg-gradient-to-br from-blue-500 via-indigo-600 to-purple-700 p-6 rounded-3xl text-white shadow-2xl hover:shadow-blue-500/25"
-        >
-          <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
-          <div className="relative flex items-center justify-between">
-            <div>
-              <p className="text-white/90 text-xs font-bold uppercase tracking-[0.2em] mb-2">
-                {lang === 'fr' ? 'Réservations Actives' : 'الحجوزات النشطة'}
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <p
+                className="text-[10px] font-black uppercase tracking-widest leading-tight"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                {kpi.label[lang]}
               </p>
-              <p className="text-3xl font-black mb-3">{stats.activeReservations}</p>
-              <div className="flex items-center gap-2">
-                <motion.div
-                  animate={{ rotate: [0, 10, -10, 0] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                >
-                  📅
-                </motion.div>
-                <span className="text-xs font-bold bg-white/20 px-2 py-1 rounded-full">
-                  {lang === 'fr' ? 'Ce mois' : 'هذا الشهر'}
-                </span>
-              </div>
+              <span
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0"
+                style={{ background: `color-mix(in srgb, ${kpi.accent} 14%, transparent)` }}
+              >
+                {kpi.icon}
+              </span>
             </div>
-            <motion.div
-              animate={{ scale: [1, 1.1, 1] }}
-              transition={{ duration: 2.5, repeat: Infinity }}
-              className="text-6xl opacity-90"
-            >
-              🚗
-            </motion.div>
-          </div>
-        </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 30, rotateY: -15 }}
-          animate={{ opacity: 1, y: 0, rotateY: 0 }}
-          transition={{ delay: 0.5, type: "spring", stiffness: 100 }}
-          whileHover={{ scale: 1.05, rotateY: 5 }}
-          className="relative overflow-hidden bg-gradient-to-br from-orange-400 via-red-500 to-pink-600 p-6 rounded-3xl text-white shadow-2xl hover:shadow-orange-500/25"
-        >
-          <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
-          <div className="relative flex items-center justify-between">
-            <div>
-              <p className="text-white/90 text-xs font-bold uppercase tracking-[0.2em] mb-2">
-                {lang === 'fr' ? 'Véhicules Disponibles' : 'المركبات المتاحة'}
-              </p>
-              <p className="text-3xl font-black mb-3">
-                {stats.availableCars}/{stats.totalCars}
-              </p>
-              <div className="flex items-center gap-2">
-                <motion.div
-                  animate={{ x: [0, 5, 0] }}
-                  transition={{ duration: 1.8, repeat: Infinity }}
-                >
-                  🚙
-                </motion.div>
-                <span className="text-xs font-bold bg-white/20 px-2 py-1 rounded-full">
-                  {Math.round((stats.availableCars / stats.totalCars) * 100)}%
-                </span>
-              </div>
-            </div>
-            <motion.div
-              animate={{ scale: [1, 1.1, 1] }}
-              transition={{ duration: 2.2, repeat: Infinity }}
-              className="text-6xl opacity-90"
-            >
-              🏁
-            </motion.div>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 30, rotateY: -15 }}
-          animate={{ opacity: 1, y: 0, rotateY: 0 }}
-          transition={{ delay: 0.6, type: "spring", stiffness: 100 }}
-          whileHover={{ scale: 1.05, rotateY: 5 }}
-          className="relative overflow-hidden bg-gradient-to-br from-red-500 via-rose-600 to-pink-700 p-6 rounded-3xl text-white shadow-2xl hover:shadow-red-500/25"
-        >
-          <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
-          <div className="relative flex items-center justify-between">
-            <div>
-              <p className="text-white/90 text-xs font-bold uppercase tracking-[0.2em] mb-2">
-                {lang === 'fr' ? 'Alertes Maintenance' : 'تنبيهات الصيانة'}
-              </p>
-              <p className="text-3xl font-black mb-3">{stats.maintenanceAlerts}</p>
-              <div className="flex items-center gap-2">
-                <motion.div
-                  animate={{ rotate: [0, -10, 10, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                >
-                  ⚠️
-                </motion.div>
-                <span className="text-xs font-bold bg-white/20 px-2 py-1 rounded-full">
-                  {criticalAlerts.length} {lang === 'fr' ? 'critiques' : 'حرجة'}
-                </span>
-              </div>
-            </div>
-            <motion.div
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ duration: 1.8, repeat: Infinity }}
-              className="text-6xl opacity-90"
-            >
-              🔧
-            </motion.div>
-          </div>
-        </motion.div>
+            <p className="text-3xl font-black leading-none" style={{ color: 'var(--color-text)' }}>
+              {kpi.value}
+            </p>
+            <p className="text-[11px] mt-1.5 font-semibold" style={{ color: 'var(--color-text-dim)' }}>
+              {kpi.hint[lang]}
+            </p>
+          </motion.div>
+        ))}
       </div>
 
       {/* Enhanced Charts Section */}

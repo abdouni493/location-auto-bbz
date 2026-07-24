@@ -209,6 +209,13 @@ export const CarsPage: React.FC<CarsPageProps> = ({ lang, isAuthLoading = false,
           deposit: carData.deposit || selectedCar.deposit,
           mileage: carData.mileage || selectedCar.mileage,
           fuel_level: carData.fuelLevel || selectedCar.fuelLevel || 'full',
+          // Propriétaire — `??` et non `||` : 0 et '' sont des valeurs valides
+          // (une part d'agence à 0 doit pouvoir être enregistrée).
+          owner_type: carData.ownerType ?? selectedCar.ownerType ?? 'personal',
+          owner_name: carData.ownerName ?? selectedCar.ownerName ?? null,
+          owner_phone: carData.ownerPhone ?? selectedCar.ownerPhone ?? null,
+          agency_daily_share: carData.agencyDailyShare ?? selectedCar.agencyDailyShare ?? 0,
+          currency_config: carData.currencyConfig ?? selectedCar.currencyConfig ?? {},
         };
         const result = await updateCar(selectedCar.id, updateData);
         if (result.success) {
@@ -233,6 +240,11 @@ export const CarsPage: React.FC<CarsPageProps> = ({ lang, isAuthLoading = false,
           price_month: carData.priceMonth || 0,
           deposit: carData.deposit || 0,
           mileage: carData.mileage || 0,
+          owner_type: carData.ownerType ?? 'personal',
+          owner_name: carData.ownerName || undefined,
+          owner_phone: carData.ownerPhone || undefined,
+          agency_daily_share: carData.agencyDailyShare ?? 0,
+          currency_config: carData.currencyConfig ?? {},
         };
         const result = await addCar(newCarData);
         if (result.success && result.car) {
@@ -254,6 +266,11 @@ export const CarsPage: React.FC<CarsPageProps> = ({ lang, isAuthLoading = false,
             deposit: Math.round(Number(result.car.deposit || result.car.price_per_day * 2)),
             images: result.car.image_url ? [result.car.image_url] : ['https://picsum.photos/seed/car/400/300'],
             mileage: result.car.mileage || 0,
+            ownerType: (result.car as any).owner_type ?? 'personal',
+            ownerName: (result.car as any).owner_name ?? undefined,
+            ownerPhone: (result.car as any).owner_phone ?? undefined,
+            agencyDailyShare: Number((result.car as any).agency_daily_share) || 0,
+            currencyConfig: carData.currencyConfig ?? {},
           };
           setCars(prev => [...prev, newCar]);
         }

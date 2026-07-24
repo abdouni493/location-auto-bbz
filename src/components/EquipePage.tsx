@@ -8,6 +8,7 @@ import { WorkerAdvanceModal } from './WorkerAdvanceModal';
 import { WorkerAbsenceModal } from './WorkerAbsenceModal';
 import { WorkerHistoryModal } from './WorkerHistoryModal';
 import { ConfirmModal } from './ConfirmModal';
+import { WorkerPermissionsModal } from './WorkerPermissionsModal';
 import { Plus, Search, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DatabaseService } from '../services/DatabaseService';
@@ -72,6 +73,7 @@ export const EquipePage: React.FC<EquipePageProps> = ({ lang }) => {
   const [editingWorker, setEditingWorker] = useState<Worker | null>(null);
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null);
   const [activeModal, setActiveModal] = useState<'details' | 'payment' | 'advance' | 'absence' | 'history' | null>(null);
+  const [permissionsFor, setPermissionsFor] = useState<Worker | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; workerId: string | null }>({ isOpen: false, workerId: null });
 
   // Load workers on component mount
@@ -98,22 +100,49 @@ export const EquipePage: React.FC<EquipePageProps> = ({ lang }) => {
   );
 
   const handleSaveWorker = async (workerData: Partial<Worker>): Promise<void> => {
-    try {
-      if (editingWorker) {
-        // Edit existing
-        const updated = await DatabaseService.updateWorker(editingWorker.id, workerData);
-        setWorkers(workers.map(w => w.id === updated.id ? { ...updated, advances: w.advances, absences: w.absences, payments: w.payments } : w));
-      } else {
-        // Create new
-        const created = await DatabaseService.createWorker(workerData as Omit<Worker, 'id' | 'createdAt' | 'advances' | 'absences' | 'payments'>);
-        setWorkers(prev => [...prev, created]);
+    if (editingWorker) {
+      // ── Modification ────────────────────────────────────────────────────
+      // Le compte de connexion vit dans auth.users : il ne se modifie pas par
+      // un simple UPDATE sur `workers`, d'où l'appel séparé à setWorkerAccount.
+      const accountChanged =
+        Boolean(workerData.hasAccount) !== Boolean(editingWorker.hasAccount) ||
+        (workerData.hasAccount && (
+          workerData.email !== editingWorker.email ||
+          Boolean(workerData.password)
+        ));
+
+      if (accountChanged) {
+        await DatabaseService.setWorkerAccount(
+          editingWorker.id,
+          Boolean(workerData.hasAccount),
+          {
+            email: workerData.email,
+            username: workerData.username,
+            // Mot de passe vide = « ne pas changer » (voir WorkerModal).
+            password: workerData.password || undefined,
+          }
+        );
       }
-      setIsModalOpen(false);
-      setEditingWorker(null);
-    } catch (err) {
-      console.error('Error saving worker:', err);
-      throw new Error('Erreur lors de l\'enregistrement');
+
+      const updated = await DatabaseService.updateWorker(editingWorker.id, workerData);
+      setWorkers(workers.map(w =>
+        w.id === updated.id
+          ? { ...updated, hasAccount: Boolean(workerData.hasAccount),
+              advances: w.advances, absences: w.absences, payments: w.payments }
+          : w
+      ));
+    } else {
+      // ── Création ────────────────────────────────────────────────────────
+      // createWorker crée aussi le compte Supabase Auth quand hasAccount est
+      // vrai, pour que l'employé puisse se connecter immédiatement.
+      const created = await DatabaseService.createWorker(
+        workerData as Omit<Worker, 'id' | 'createdAt' | 'advances' | 'absences' | 'payments'>
+      );
+      setWorkers(prev => [...prev, created]);
     }
+
+    setIsModalOpen(false);
+    setEditingWorker(null);
   };
 
   const handleDeleteWorker = (workerId: string) => {
@@ -247,6 +276,7 @@ export const EquipePage: React.FC<EquipePageProps> = ({ lang }) => {
                       setEditingWorker(worker);
                       setIsModalOpen(true);
                     }}
+                    onPermissions={() => setPermissionsFor(worker)}
                     onDelete={() => handleDeleteWorker(worker.id)}
                   />
                 ))}
@@ -267,6 +297,17 @@ export const EquipePage: React.FC<EquipePageProps> = ({ lang }) => {
           </>
         )}
       </div>
+
+      {/* Permissions — pages visibles dans SA sidebar + boutons autorisés */}
+      <AnimatePresence>
+        {permissionsFor && (
+          <WorkerPermissionsModal
+            lang={lang}
+            worker={permissionsFor}
+            onClose={() => setPermissionsFor(null)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Modals */}
       <WorkerModal

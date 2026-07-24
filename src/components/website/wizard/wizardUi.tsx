@@ -5,9 +5,9 @@ import { Language } from '../../../types';
 
 // ─── Palette claire "Automotive" (voir design-system/auto_location/MASTER.md) ──
 export const C = {
-  accent:    '#DC2626',
+  accent:    'var(--color-gold)',
   amber:     '#D97706',
-  bg:        '#F8FAFC',
+  bg:        'var(--color-bg)',
   surface:   '#FFFFFF',
   elevated:  '#FFFFFF',
 };
@@ -35,15 +35,15 @@ export const fromYmd = (s: string): Date => {
 // ─── Styles d'inputs partagés ─────────────────────────────────────────────────
 export const inputStyle: React.CSSProperties = {
   background: '#FFFFFF',
-  border: '1px solid rgba(15,23,42,0.1)',
-  color: '#0F172A',
+  border: '1px solid var(--color-border-soft)',
+  color: 'var(--color-text)',
 };
 export const focusInput = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-  (e.target as HTMLElement).style.borderColor = '#DC2626';
-  (e.target as HTMLElement).style.boxShadow = '0 0 0 1px rgba(220,38,38,0.2)';
+  (e.target as HTMLElement).style.borderColor = 'var(--color-gold)';
+  (e.target as HTMLElement).style.boxShadow = '0 0 0 1px var(--color-gold-glow)';
 };
 export const blurInput = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-  (e.target as HTMLElement).style.borderColor = 'rgba(15,23,42,0.1)';
+  (e.target as HTMLElement).style.borderColor = 'var(--color-border-soft)';
   (e.target as HTMLElement).style.boxShadow = 'none';
 };
 
@@ -53,7 +53,7 @@ export const inputClass = 'w-full px-4 py-3 rounded-xl outline-none transition-a
 export const SectionCard: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
   <div
     className={`rounded-2xl p-6 sm:p-8 space-y-6 ${className}`}
-    style={{ background: C.elevated, border: '1px solid rgba(220,38,38,0.08)' }}
+    style={{ background: C.elevated, border: '1px solid var(--color-gold-soft)' }}
   >
     {children}
   </div>

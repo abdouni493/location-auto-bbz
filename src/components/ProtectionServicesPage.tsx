@@ -606,6 +606,9 @@ const ServiceFormModal: React.FC<{
   const [name, setName] = useState(editing?.name || '');
   const [price, setPrice] = useState<number | ''>(editing?.price ?? '');
   const [description, setDescription] = useState(editing?.description || '');
+  // Service obligatoire : coché d'office sur l'étape « Services » de tous les
+  // flux de réservation (formulaire admin ET wizard du site public).
+  const [isMandatory, setIsMandatory] = useState(editing?.isMandatory ?? false);
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -615,9 +618,9 @@ const ServiceFormModal: React.FC<{
     try {
       setSaving(true);
       if (editing) {
-        await DatabaseService.updateService(editing.id, { name: name.trim(), description, price: p, isActive: true });
+        await DatabaseService.updateService(editing.id, { name: name.trim(), description, price: p, isActive: true, isMandatory });
       } else {
-        await DatabaseService.createService({ category, name: name.trim(), description, price: p });
+        await DatabaseService.createService({ category, name: name.trim(), description, price: p, isMandatory });
       }
       onSaved();
     } catch (err) {
@@ -679,6 +682,46 @@ const ServiceFormModal: React.FC<{
             onChange={e => setDescription(e.target.value)}
             placeholder={t(lang, 'Détails du service…', 'تفاصيل الخدمة…')} />
         </div>
+
+        {/* Service obligatoire */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={isMandatory}
+          onClick={() => setIsMandatory(v => !v)}
+          className="w-full flex items-center justify-between gap-4 p-4 rounded-xl text-left transition-colors cursor-pointer"
+          style={{
+            background: isMandatory ? 'var(--color-gold-soft)' : 'var(--color-surface-2)',
+            border: `1px solid ${isMandatory ? 'var(--color-gold)' : 'var(--color-border-soft)'}`,
+          }}
+        >
+          <span className="min-w-0">
+            <span className="block font-bold text-sm"
+              style={{ color: isMandatory ? 'var(--color-gold)' : 'var(--color-text)' }}>
+              {t(lang, 'Service obligatoire', 'خدمة إلزامية')}
+            </span>
+            <span className="block text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              {t(lang,
+                'Sélectionné automatiquement sur toutes les réservations (agence et site web), sans possibilité de le retirer.',
+                'يُحدَّد تلقائيًا في كل الحجوزات (الوكالة والموقع) دون إمكانية إزالته.')}
+            </span>
+          </span>
+          <span
+            className="relative w-12 h-6 rounded-full shrink-0 transition-colors"
+            style={{
+              background: isMandatory ? 'var(--color-gold)' : 'var(--color-surface-3)',
+              border: '1px solid var(--color-border-soft)',
+            }}
+          >
+            <span
+              className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
+              style={{
+                left: isMandatory ? 'calc(100% - 1.375rem)' : '0.125rem',
+                background: isMandatory ? '#0A0A0B' : 'var(--color-text-muted)',
+              }}
+            />
+          </span>
+        </button>
       </div>
 
       <div className="flex gap-3 mt-8 pt-5 border-t border-saas-border">

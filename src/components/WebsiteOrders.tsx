@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Calendar, Users, Car as CarIcon, Plus, Search, Filter, Eye, Edit, Trash2, CheckCircle, XCircle, Clock, MapPin, Fuel, Camera, FileText, CreditCard, DollarSign, AlertTriangle, Phone, Mail, User, Loader } from 'lucide-react';
 import { DatabaseService } from '../services/DatabaseService';
 import { ReservationsService } from '../services/ReservationsService';
+import { ReservationCurrencyInfo } from './ReservationCurrencyInfo';
+import { FlightInfoPanel } from './FlightInfoPanel';
 
 interface WebsiteOrdersProps {
   lang: Language;
@@ -345,6 +347,8 @@ export const WebsiteOrders: React.FC<WebsiteOrdersProps> = ({ lang, onOrdersChan
                       <div className="text-xl font-black text-slate-900">
                         {order.totalPrice.toLocaleString()} {lang === 'fr' ? 'DA' : 'د.ج'}
                       </div>
+                      {/* Devise du client + code promo — masqués s'ils n'existent pas */}
+                      <ReservationCurrencyInfo reservation={order} lang={lang} variant="inline" className="mt-2" />
                     </div>
                     <div className="text-right">
                       <div className="text-xs text-slate-500">{lang === 'fr' ? 'Statut' : 'الحالة'}</div>
@@ -676,6 +680,18 @@ export const WebsiteOrders: React.FC<WebsiteOrdersProps> = ({ lang, onOrdersChan
                           </div>
                         );
                       })()}
+
+                      {/* Devise de réservation + code promo. Le composant ne rend
+                          rien si la commande est en dinars et sans code promo. */}
+                      <ReservationCurrencyInfo
+                        reservation={selectedOrder}
+                        lang={lang}
+                        variant="panel"
+                        className="mt-3"
+                      />
+
+                      {/* Vol du client — masqué si la commande n'en mentionne pas */}
+                      <FlightInfoPanel reservation={selectedOrder} lang={lang} className="mt-3" />
                     </div>
 
                     {/* Assurance de protection */}

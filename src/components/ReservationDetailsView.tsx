@@ -3,7 +3,16 @@ import { Language, ReservationDetails, Payment, VehicleInspection, InspectionIte
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowLeft, Calendar, Clock, MapPin, Fuel, Camera, FileText, CreditCard, DollarSign, Printer, AlertTriangle, CheckCircle, XCircle, Plus, Trash2, Edit, Eye, Car as CarIcon, User, Phone, Mail, CreditCard as CardIcon, Shield, Wrench, Sofa, Sparkles, Droplets } from 'lucide-react';
 import { ReservationsService } from '../services/ReservationsService';
+import { InspectionChecklist } from './inspection/InspectionChecklist';
+import { InspectionPhotos } from './inspection/InspectionPhotos';
+import { MileagePolicyPanel } from './inspection/MileagePolicyPanel';
+import { TerminationPaymentPanel } from './inspection/TerminationPaymentPanel';
+import { ReturnAlerts, computeSuggestedFees } from './inspection/ReturnAlerts';
+import { SettingsService, DEFAULT_MILEAGE_POLICY, mileageLimitFor, missingFuelLevels } from '../services/settingsService';
+import { purgeInspectionImages } from '../services/inspectionCleanup';
 import { DatabaseService } from '../services/DatabaseService';
+import { ReservationCurrencyInfo } from './ReservationCurrencyInfo';
+import { FlightInfoPanel } from './FlightInfoPanel';
 import { supabase } from '../supabase';
 
 interface ReservationDetailsViewProps {
@@ -695,6 +704,12 @@ const PaymentsTab: React.FC<{ lang: Language; reservation: ReservationDetails; o
           </div>
         )}
       </div>
+
+      {/* Devise de réservation + code promo (site public).
+          Ces deux encarts ne s'affichent QUE si l'information existe :
+          une réservation en dinars sans code promo n'en montre aucun. */}
+      <ReservationCurrencyInfo reservation={reservation} lang={lang} variant="panel" className="mt-4" />
+      <FlightInfoPanel reservation={reservation} lang={lang} className="mt-4" />
     </div>
 
     {/* Payment History */}
@@ -1352,72 +1367,22 @@ export const ActivationModal: React.FC<{ lang: Language; reservation: Reservatio
             />
           </div>
 
-          {/* INSPECTION ITEMS */}
-          <div className="bg-gradient-to-r from-saas-primary-start/10 to-saas-primary-end/10 rounded-xl p-6 border border-saas-primary-start/20">
-            <h4 className="text-lg font-black text-saas-text-main mb-4">
+          {/* Contrôle du véhicule — MÊME composant que l'étape « Inspection »
+              de la création de réservation, pour un rendu strictement identique. */}
+          <div
+            className="rounded-xl p-5"
+            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}
+          >
+            <h4 className="text-lg font-black mb-4" style={{ color: 'var(--color-text)' }}>
               🔍 {lang === 'fr' ? 'Vérification du Véhicule' : 'فحص المركبة'}
             </h4>
-            <div className="space-y-6">
-              {/* Security Items */}
-              <div>
-                <h5 className="font-bold text-saas-text-main mb-2">🛡️ {lang === 'fr' ? 'Sécurité' : 'الأمان'}</h5>
-                <div className="space-y-2">
-                  {securityItems.map(item => (
-                    <div key={item.id} className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={item.checked}
-                        onChange={() => handleInspectionItemToggle(item.id)}
-                        className="w-5 h-5 text-saas-primary-start border-slate-300 rounded focus:ring-saas-primary-start"
-                      />
-                      <span className="font-bold capitalize text-saas-text-main">
-                        {item.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* Equipment Items */}
-              <div>
-                <h5 className="font-bold text-saas-text-main mb-2">🔧 {lang === 'fr' ? 'Équipements' : 'المعدات'}</h5>
-                <div className="space-y-2">
-                  {equipmentItems.map(item => (
-                    <div key={item.id} className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={item.checked}
-                        onChange={() => handleInspectionItemToggle(item.id)}
-                        className="w-5 h-5 text-saas-primary-start border-slate-300 rounded focus:ring-saas-primary-start"
-                      />
-                      <span className="font-bold capitalize text-saas-text-main">
-                        {item.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Comfort & Cleanliness Items */}
-              <div>
-                <h5 className="font-bold text-saas-text-main mb-2">✨ {lang === 'fr' ? 'Confort & Propreté' : 'الراحة والنظافة'}</h5>
-                <div className="space-y-2">
-                  {comfortItems.map(item => (
-                    <div key={item.id} className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={item.checked}
-                        onChange={() => handleInspectionItemToggle(item.id)}
-                        className="w-5 h-5 text-saas-primary-start border-slate-300 rounded focus:ring-saas-primary-start"
-                      />
-                      <span className="font-bold capitalize text-saas-text-main">
-                        {item.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <InspectionChecklist
+              lang={lang}
+              categories={toChecklistCategories(inspectionItems, lang)}
+              responses={toResponses(inspectionItems)}
+              onToggle={handleInspectionItemToggle}
+            />
           </div>
 
           {/* ACTION BUTTONS */}
@@ -1491,6 +1456,29 @@ export const ActivationModal: React.FC<{ lang: Language; reservation: Reservatio
   );
 };
 
+
+/**
+ * Convertit les items d'inspection (modèle `InspectionItem`) vers le format
+ * attendu par <InspectionChecklist>, en réutilisant exactement les mêmes
+ * catégories que l'étape « Inspection » de la création de réservation.
+ */
+const toChecklistCategories = (items: InspectionItem[], lang: Language) => {
+  const pick = (...cats: string[]) =>
+    items
+      .filter(i => cats.includes(i.category))
+      .map(i => ({ id: i.id, category: i.category, item_name: i.name }));
+
+  return [
+    { key: 'securite',    title: lang === 'fr' ? 'Sécurité' : 'الأمان',                 items: pick('security') },
+    { key: 'equipements', title: lang === 'fr' ? 'Équipements' : 'المعدات',             items: pick('equipment') },
+    { key: 'confort',     title: lang === 'fr' ? 'Confort & Propreté' : 'الراحة والنظافة', items: pick('comfort', 'cleanliness') },
+  ].filter(c => c.items.length > 0);
+};
+
+/** Items -> map id → coché, format attendu par <InspectionChecklist>. */
+const toResponses = (items: InspectionItem[]): Record<string, boolean> =>
+  Object.fromEntries(items.map(i => [i.id, !!i.checked]));
+
 export const CompletionModal: React.FC<{ lang: Language; reservation: ReservationDetails; onClose: () => void; onComplete?: (reservation: ReservationDetails) => void }> = ({ lang, reservation, onClose, onComplete }) => {
   const [returnMileage, setReturnMileage] = useState('');
   const [returnFuelLevel, setReturnFuelLevel] = useState<'full' | 'half' | 'quarter' | 'eighth' | 'empty'>('full');
@@ -1507,9 +1495,74 @@ export const CompletionModal: React.FC<{ lang: Language; reservation: Reservatio
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // ── Politique kilométrique globale (app_settings) ──
+  const [policy, setPolicy] = useState<MileagePolicy>(DEFAULT_MILEAGE_POLICY);
+  useEffect(() => {
+    SettingsService.getMileagePolicy()
+      .then(setPolicy)
+      .catch(() => setPolicy(DEFAULT_MILEAGE_POLICY));
+  }, []);
+
+  // ── Règlement de la clôture ──
+  const [payNow, setPayNow] = useState<number | ''>('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+
   const totalDistance = returnMileage && reservation.departureInspection?.mileage
     ? parseInt(returnMileage) - reservation.departureInspection.mileage
     : 0;
+
+  // État de la checklist AU DÉPART, pour la colonne de comparaison.
+  const departureResponses = React.useMemo(
+    () => toResponses(reservation.departureInspection?.inspectionItems || []),
+    [reservation.departureInspection]
+  );
+
+  // Photos prises lors de l'inspection de départ.
+  const departurePhotos = React.useMemo(() => {
+    const dep = reservation.departureInspection;
+    if (!dep) return [] as { url: string; type: string }[];
+    return [
+      ...(dep.exteriorPhotos || []).map(url => ({ url, type: 'exterior' })),
+      ...(dep.interiorPhotos || []).map(url => ({ url, type: 'interior' })),
+    ].filter(p => p.url);
+  }, [reservation.departureInspection]);
+
+  // Limite kilométrique applicable à CETTE location.
+  const mileageLimit = mileageLimitFor(policy, reservation.totalDays);
+
+  // Crans de carburant manquants entre le départ et le retour.
+  const missingFuelCount = missingFuelLevels(
+    reservation.departureInspection?.fuelLevel,
+    returnFuelLevel
+  );
+
+  // Frais suggérés par la politique, recalculés à chaque saisie.
+  const suggested = computeSuggestedFees(
+    policy,
+    mileageLimit,
+    reservation.departureInspection?.mileage,
+    returnMileage ? parseInt(returnMileage) : null,
+    missingFuelCount
+  );
+
+  // Pré-remplissage automatique des frais (si l'option est active et que
+  // l'agent n'a pas déjà saisi un montant à la main).
+  useEffect(() => {
+    if (!policy.autoApplyFees) return;
+    if (suggested.mileageFee > 0 && excessMileage === '') {
+      setExcessMileage(String(suggested.mileageFee));
+    }
+    if (suggested.fuelFee > 0 && missingFuel === '') {
+      setMissingFuel(String(suggested.fuelFee));
+    }
+  }, [suggested.mileageFee, suggested.fuelFee, policy.autoApplyFees]);
+
+  // Déjà encaissé avant cette clôture.
+  const alreadyPaid = (() => {
+    const fromPayments = (reservation.payments || [])
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    return fromPayments > 0 ? fromPayments : Number(reservation.advancePayment) || 0;
+  })();
 
   const fuelLevels = [
     { value: 'full', label: 'PLEIN' },
@@ -1587,6 +1640,54 @@ export const CompletionModal: React.FC<{ lang: Language; reservation: Reservatio
 
       console.log('🟢 Car info updated successfully');
 
+      // ── Règlement : enregistre l'encaissement du jour et met à jour la dette ──
+      const paidNow = payNow === '' ? 0 : Number(payNow) || 0;
+      const totalDue = reservation.totalPrice + totalFees;
+      const totalPaidAfter = alreadyPaid + paidNow;
+      const remainingAfter = Math.max(0, totalDue - totalPaidAfter);
+
+      if (paidNow > 0) {
+        try {
+          await ReservationsService.addPayment({
+            reservationId: reservation.id,
+            amount: paidNow,
+            paymentMethod: paymentMethod as 'cash' | 'card' | 'transfer' | 'check',
+            date: new Date().toISOString().split('T')[0],
+            note: lang === 'fr' ? 'Règlement à la clôture de la location' : 'تسوية عند إنهاء الإيجار',
+          });
+        } catch (payErr) {
+          // Le paiement n'est pas bloquant pour la clôture : on le signale
+          // sans annuler la fin de location déjà enregistrée.
+          console.error('❌ Enregistrement du paiement de clôture impossible:', payErr);
+        }
+      }
+
+      // Met à jour les totaux et le statut de dette sur la réservation.
+      const { error: payError } = await supabase
+        .from('reservations')
+        .update({
+          advance_payment: totalPaidAfter,
+          remaining_payment: remainingAfter,
+          additional_fees: totalFees,
+          excess_mileage_km: suggested.excessKm,
+          excess_mileage_fee: parseFloat(excessMileage) || 0,
+          missing_fuel_levels: missingFuelCount,
+          missing_fuel_fee: parseFloat(missingFuel) || 0,
+          mileage_limit_km: mileageLimit,
+        })
+        .eq('id', reservation.id);
+
+      if (payError) {
+        console.error('❌ Mise à jour du paiement impossible:', payError);
+      }
+
+      // ── Purge DÉFINITIVE des photos d'inspection de cette réservation ──
+      // La location est close : les clichés n'ont plus lieu d'être conservés.
+      const purge = await purgeInspectionImages(reservation.id);
+      if (!purge.success) {
+        console.warn('⚠️ Purge des photos incomplète:', purge.error);
+      }
+
       // Update the local reservation state
       const updatedReservation = {
         ...reservation,
@@ -1611,6 +1712,8 @@ export const CompletionModal: React.FC<{ lang: Language; reservation: Reservatio
         excessMileage: parseFloat(excessMileage) || 0,
         missingFuel: parseFloat(missingFuel) || 0,
         additionalFees: totalFees,
+        advancePayment: totalPaidAfter,
+        remainingPayment: remainingAfter,
         notes: notes
       };
 
@@ -1850,6 +1953,40 @@ export const CompletionModal: React.FC<{ lang: Language; reservation: Reservatio
             </div>
           </div>
 
+          {/* Politique kilométrique — réglage GLOBAL, appliqué à toutes les clôtures */}
+          <MileagePolicyPanel
+            lang={lang}
+            totalDays={reservation.totalDays}
+            policy={policy}
+            onPolicyChange={setPolicy}
+          />
+
+          {/* Alertes : dépassement kilométrique et carburant manquant */}
+          <ReturnAlerts
+            lang={lang}
+            policy={policy}
+            mileageLimit={mileageLimit}
+            departureMileage={reservation.departureInspection?.mileage}
+            returnMileage={returnMileage ? parseInt(returnMileage) : null}
+            departureFuel={reservation.departureInspection?.fuelLevel}
+            returnFuel={returnFuelLevel}
+            missingFuelLevels={missingFuelCount}
+            mileageFee={parseFloat(excessMileage) || 0}
+            fuelFee={parseFloat(missingFuel) || 0}
+          />
+
+          {/* Bilan financier : total, frais, déjà payé, encaissement, reste */}
+          <TerminationPaymentPanel
+            lang={lang}
+            baseTotal={reservation.totalPrice}
+            extraFees={totalFees}
+            alreadyPaid={alreadyPaid}
+            payNow={payNow}
+            onPayNowChange={setPayNow}
+            paymentMethod={paymentMethod}
+            onPaymentMethodChange={setPaymentMethod}
+          />
+
           {/* Documents */}
           <div className="bg-yellow-50 rounded-2xl p-6 border border-yellow-200">
             <h4 className="text-lg font-black text-yellow-900 mb-4">
@@ -1888,97 +2025,47 @@ export const CompletionModal: React.FC<{ lang: Language; reservation: Reservatio
             </div>
           </div>
 
-          {/* Return Inspection */}
-          <div className="bg-orange-50 rounded-2xl p-6 border border-orange-200">
-            <h4 className="text-lg font-black text-orange-900 mb-4">
+          {/* Contrôle de retour — MÊME composant partagé que l'inspection de
+              départ. La colonne « Retour » se compare visuellement à l'état
+              relevé au départ, pour repérer les écarts d'un coup d'œil. */}
+          <div
+            className="rounded-2xl p-5"
+            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}
+          >
+            <h4 className="text-lg font-black mb-4" style={{ color: 'var(--color-text)' }}>
               🔄 {lang === 'fr' ? 'Vérification Retour (État de Retour)' : 'التحقق من العودة (حالة العودة)'}
             </h4>
-            <div className="space-y-6">
-              {/* Security Items */}
-              <div>
-                <h5 className="font-bold text-orange-900 mb-2">🛡️ {lang === 'fr' ? 'Sécurité' : 'الأمان'}</h5>
-                <div className="space-y-2">
-                  {securityItems.map(item => (
-                    <div key={item.id} className="flex items-center justify-between bg-white p-3 rounded-lg border">
-                      <span className="font-bold capitalize text-orange-900">
-                        {item.name}
-                      </span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleInspectionItemToggle(item.id, true)}
-                          className={`px-3 py-1 rounded font-bold text-sm ${item.checked ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-green-100'}`}
-                        >
-                          {lang === 'fr' ? 'Oui' : 'نعم'}
-                        </button>
-                        <button
-                          onClick={() => handleInspectionItemToggle(item.id, false)}
-                          className={`px-3 py-1 rounded font-bold text-sm ${!item.checked ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-red-100'}`}
-                        >
-                          {lang === 'fr' ? 'Non' : 'لا'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* Equipment Items */}
-              <div>
-                <h5 className="font-bold text-orange-900 mb-2">🔧 {lang === 'fr' ? 'Équipements' : 'المعدات'}</h5>
-                <div className="space-y-2">
-                  {equipmentItems.map(item => (
-                    <div key={item.id} className="flex items-center justify-between bg-white p-3 rounded-lg border">
-                      <span className="font-bold capitalize text-orange-900">
-                        {item.name}
-                      </span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleInspectionItemToggle(item.id, true)}
-                          className={`px-3 py-1 rounded font-bold text-sm ${item.checked ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-green-100'}`}
-                        >
-                          {lang === 'fr' ? 'Oui' : 'نعم'}
-                        </button>
-                        <button
-                          onClick={() => handleInspectionItemToggle(item.id, false)}
-                          className={`px-3 py-1 rounded font-bold text-sm ${!item.checked ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-red-100'}`}
-                        >
-                          {lang === 'fr' ? 'Non' : 'لا'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Comfort & Cleanliness Items */}
-              <div>
-                <h5 className="font-bold text-orange-900 mb-2">✨ {lang === 'fr' ? 'Confort & Propreté' : 'الراحة والنظافة'}</h5>
-                <div className="space-y-2">
-                  {comfortItems.map(item => (
-                    <div key={item.id} className="flex items-center justify-between bg-white p-3 rounded-lg border">
-                      <span className="font-bold capitalize text-orange-900">
-                        {item.name}
-                      </span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleInspectionItemToggle(item.id, true)}
-                          className={`px-3 py-1 rounded font-bold text-sm ${item.checked ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-green-100'}`}
-                        >
-                          {lang === 'fr' ? 'Oui' : 'نعم'}
-                        </button>
-                        <button
-                          onClick={() => handleInspectionItemToggle(item.id, false)}
-                          className={`px-3 py-1 rounded font-bold text-sm ${!item.checked ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-red-100'}`}
-                        >
-                          {lang === 'fr' ? 'Non' : 'لا'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <InspectionChecklist
+              lang={lang}
+              categories={toChecklistCategories(returnInspectionItems, lang)}
+              responses={toResponses(returnInspectionItems)}
+              onToggle={id => handleInspectionItemToggle(id)}
+              compareResponses={departureResponses}
+              primaryLabel={lang === 'fr' ? 'Retour' : 'العودة'}
+              compareLabel={lang === 'fr' ? 'Départ' : 'المغادرة'}
+            />
           </div>
+
+          {/* Photos prises au DÉPART — pour comparer l'état rendu. */}
+          {departurePhotos.length > 0 && (
+            <div
+              className="rounded-2xl p-5"
+              style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}
+            >
+              <InspectionPhotos
+                lang={lang}
+                photos={departurePhotos}
+                readOnly
+                title={lang === 'fr' ? "Photos de l'inspection de départ" : 'صور فحص المغادرة'}
+              />
+              <p className="text-[11px] mt-3" style={{ color: 'var(--color-text-dim)' }}>
+                ⚠️ {lang === 'fr'
+                  ? 'Ces photos seront définitivement supprimées à la clôture de la location.'
+                  : 'ستُحذف هذه الصور نهائيًا عند إنهاء الإيجار.'}
+              </p>
+            </div>
+          )}
 
           {/* Signature */}
           <div className="bg-indigo-50 rounded-2xl p-6 border border-indigo-200">

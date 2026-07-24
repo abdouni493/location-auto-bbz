@@ -1,87 +1,81 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Calendar, TrendingUp, TrendingDown, DollarSign, Car as CarIcon,
-  ChevronDown, ChevronUp, Printer, Loader2, AlertCircle, X,
-  Clock, CreditCard
+  Calendar, TrendingUp, Printer, Loader2, AlertCircle,
+  ChevronDown, Clock, Users, Building2, Wallet, Receipt, FileText,
 } from 'lucide-react';
 import { Language, Car, ReservationDetails, VehicleExpense } from '../types';
 import { DatabaseService } from '../services/DatabaseService';
 import { ReservationsService } from '../services/ReservationsService';
 import { getVehicleExpenses } from '../services/expenseService';
 import { generateReportHTML } from './ReportPrintTemplate';
-import { CAR_IMAGES } from '../constants';
+import { generateOwnerReportHTML } from './OwnerReportTemplate';
+import { computeCarBenefits, inRange, type CarBenefits } from '../utils/carBenefits';
 
 interface CarGainsPageProps {
   lang: Language;
 }
 
-const T = (fr: string, ar: string, lang: Language) => lang === 'fr' ? fr : ar;
-const fmt = (n: number) => Math.round(n || 0).toLocaleString('fr-DZ');
-const fmtD = (d: string) => {
-  try {
-    return new Date(d).toLocaleDateString('fr-FR');
-  } catch {
-    return d || '';
-  }
+const fmt = (n: number) => Math.round(n || 0).toLocaleString('fr-FR');
+const fmtD = (d?: string) => {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleDateString('fr-FR'); } catch { return d; }
 };
 
-// Calculate paid amount
-const calcPaid = (r: ReservationDetails): number => {
-  const payments = (r.payments || []) as any[];
-  if (payments.length > 0) {
-    const total = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    if (total > 0) return total;
-  }
-  return Math.max(0, (Number(r.totalPrice) || 0) - (Number(r.remainingPayment) || 0));
-};
+/** Ouvre un document HTML dans une iframe cachée et lance l'impression. */
+const printHTML = (html: string) => {
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
 
-// Helper to check if date is in range
-const inRange = (dateStr: string, startDate: string, endDate: string): boolean => {
-  if (!dateStr) return false;
-  const d = dateStr.substring(0, 10);
-  return (!startDate || d >= startDate) && (!endDate || d <= endDate);
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) { document.body.removeChild(iframe); return; }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  setTimeout(() => {
+    iframe.contentWindow?.print();
+    setTimeout(() => document.body.removeChild(iframe), 500);
+  }, 300);
 };
 
 export const CarGainsPage: React.FC<CarGainsPageProps> = ({ lang }) => {
-  const isRtl = lang === 'ar';
+  const isFr = lang === 'fr';
+  const T = (fr: string, ar: string) => (isFr ? fr : ar);
 
   const [cars, setCars] = useState<Car[]>([]);
-  const [selectedCarId, setSelectedCarId] = useState<string>('');
+  const [selectedCarId, setSelectedCarId] = useState('');
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
     return d.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-  
+
   const [loading, setLoading] = useState(false);
   const [generated, setGenerated] = useState(false);
   const [reservations, setReservations] = useState<ReservationDetails[]>([]);
   const [expenses, setExpenses] = useState<VehicleExpense[]>([]);
   const [expandedRes, setExpandedRes] = useState<string | null>(null);
   const [expandedExp, setExpandedExp] = useState<string | null>(null);
+  const [tab, setTab] = useState<'rentals' | 'expenses'>('rentals');
 
-  // Load cars on mount
   useEffect(() => {
-    const loadCars = async () => {
-      try {
-        const carsData = await DatabaseService.getCars();
-        setCars(carsData);
-        if (carsData.length > 0) {
-          setSelectedCarId(carsData[0].id);
-        }
-      } catch (err) {
-        console.error('Error loading cars:', err);
-      }
-    };
-    loadCars();
+    DatabaseService.getCars()
+      .then(list => {
+        setCars(list);
+        if (list.length > 0) setSelectedCarId(list[0].id);
+      })
+      .catch(err => console.error('Error loading cars:', err));
   }, []);
 
-  // Generate report on button click
+  const selectedCar = cars.find(c => c.id === selectedCarId);
+
   const handleGenerate = async () => {
     if (!selectedCarId || !startDate || !endDate) {
-      alert(T('Veuillez sélectionner un véhicule et les dates.', 'يرجى تحديد المركبة والتواريخ.', lang));
+      alert(T('Veuillez sélectionner un véhicule et les dates.', 'يرجى تحديد المركبة والتواريخ.'));
       return;
     }
 
@@ -89,580 +83,542 @@ export const CarGainsPage: React.FC<CarGainsPageProps> = ({ lang }) => {
     try {
       const [resList, expList] = await Promise.all([
         ReservationsService.getReservations(),
-        (async () => {
-          const res = await getVehicleExpenses();
-          return res.expenses || [];
-        })()
+        getVehicleExpenses().then(r => r.expenses || []),
       ]);
 
-      const carRes = resList.filter(
-        r => (r.carId || r.car?.id) === selectedCarId && inRange(r.step1?.departureDate || r.createdAt || '', startDate, endDate)
+      setReservations(
+        resList.filter(
+          r => (r.carId || r.car?.id) === selectedCarId &&
+               inRange(r.step1?.departureDate || r.createdAt || '', startDate, endDate)
+        )
       );
-
-      const carExp = expList.filter(
-        e => e.carId === selectedCarId && inRange(e.date, startDate, endDate)
-      ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-      setReservations(carRes);
-      setExpenses(carExp);
+      setExpenses(
+        expList
+          .filter(e => e.carId === selectedCarId && inRange(e.date, startDate, endDate))
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      );
       setGenerated(true);
     } catch (err) {
       console.error('Error loading data:', err);
-      alert(T('Erreur lors du chargement des données.', 'خطأ في تحميل البيانات.', lang));
+      alert(T('Erreur lors du chargement des données.', 'خطأ في تحميل البيانات.'));
     } finally {
       setLoading(false);
     }
   };
 
-  // Calculate metrics
-  const selectedCar = cars.find(c => c.id === selectedCarId);
-  const nonCancelledRes = reservations.filter(r => r.status !== 'cancelled');
-  const totalPaid = nonCancelledRes.reduce((s, r) => s + calcPaid(r), 0);
-  const totalInvoiced = nonCancelledRes.reduce((s, r) => s + (Number(r.totalPrice) || 0), 0);
-  const totalRemaining = reservations
-    .filter(r => !['completed', 'cancelled'].includes(r.status))
-    .reduce((s, r) => s + (Number(r.remainingPayment) || 0), 0);
-  const totalExpenses = expenses.reduce((s, e) => s + (Number(e.cost) || 0), 0);
-  const netBenefit = totalPaid - totalExpenses;
+  /** Tous les chiffres viennent d'ici — écran et impression partagent le calcul. */
+  const benefits: CarBenefits | null = useMemo(
+    () => (selectedCar ? computeCarBenefits(selectedCar, reservations, expenses) : null),
+    [selectedCar, reservations, expenses]
+  );
 
-  // Print function
-  const handlePrint = async () => {
+  const handlePrintFull = async () => {
     if (!selectedCar) return;
-
     try {
-      const agencySettings = await DatabaseService.getWebsiteSettings();
-      
-      const html = generateReportHTML(
-        selectedCar,
-        reservations,
-        expenses,
-        startDate,
-        endDate,
-        agencySettings,
-        lang
-      );
-
-      // Use iframe for better print handling
-      const iframe = document.createElement('iframe');
-      iframe.id = '__print_iframe__';
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (iframeDoc) {
-        iframeDoc.open();
-        iframeDoc.write(html);
-        iframeDoc.close();
-        
-        setTimeout(() => {
-          iframe.contentWindow?.print();
-          // Clean up after print
-          setTimeout(() => {
-            document.body.removeChild(iframe);
-          }, 100);
-        }, 250);
-      }
+      const agency = await DatabaseService.getWebsiteSettings();
+      printHTML(generateReportHTML(selectedCar, reservations, expenses, startDate, endDate, agency, lang));
     } catch (err) {
       console.error('Error printing report:', err);
-      alert(T('Erreur lors de l\'impression.', 'خطأ في الطباعة.', lang));
+      alert(T("Erreur lors de l'impression.", 'خطأ في الطباعة.'));
     }
   };
 
+  /** Rapport pour le propriétaire — n'affiche jamais la part de l'agence. */
+  const handlePrintOwner = async () => {
+    if (!selectedCar || !benefits) return;
+    try {
+      const agency = await DatabaseService.getWebsiteSettings();
+      printHTML(generateOwnerReportHTML(selectedCar, benefits, startDate, endDate, agency, lang));
+    } catch (err) {
+      console.error('Error printing owner report:', err);
+      alert(T("Erreur lors de l'impression.", 'خطأ في الطباعة.'));
+    }
+  };
+
+  // ── Fragments de rendu ───────────────────────────────────────────────────
+
+  const kpiCard = (
+    key: string,
+    label: string,
+    value: string,
+    sub: string,
+    accent: string,
+    icon: React.ReactNode,
+    index: number
+  ) => (
+    <motion.div
+      key={key}
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.06, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -4 }}
+      className="rounded-2xl p-5 relative overflow-hidden"
+      style={{
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        boxShadow: 'var(--shadow-soft)',
+      }}
+    >
+      <span className="absolute inset-x-0 top-0 h-1" style={{ background: accent }} />
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <p className="text-[10px] font-bold uppercase tracking-widest leading-tight"
+           style={{ color: 'var(--color-text-muted)' }}>
+          {label}
+        </p>
+        <span className="p-2 rounded-lg shrink-0" style={{ background: `${accent}1F`, color: accent }}>
+          {icon}
+        </span>
+      </div>
+      <p className="text-2xl font-black leading-tight" style={{ color: 'var(--color-text)' }}>
+        {value}
+        <span className="text-xs font-bold ml-1" style={{ color: 'var(--color-text-dim)' }}>DA</span>
+      </p>
+      <p className="text-[11px] mt-1 font-semibold" style={{ color: 'var(--color-text-dim)' }}>{sub}</p>
+    </motion.div>
+  );
+
   return (
     <div className="space-y-7 pb-8">
-      {/* Header with Premium Design */}
+      {/* ── En-tête + filtres ─────────────────────────────────────────── */}
       <motion.div
-        initial={{ opacity: 0, y: 18 }}
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-3xl text-white shadow-2xl"
+        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        className="relative overflow-hidden rounded-3xl"
+        style={{
+          background: 'linear-gradient(135deg, var(--color-surface), var(--color-surface-2))',
+          border: '1px solid var(--color-vel-border-gold)',
+          boxShadow: 'var(--shadow-lift)',
+        }}
       >
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500" />
-        <div className="absolute inset-0 opacity-[0.08]"
-          style={{ backgroundImage: 'repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)', backgroundSize: '12px 12px' }}
+        <span
+          className="absolute inset-x-0 top-0 h-[2px]"
+          style={{ background: 'linear-gradient(90deg, transparent, var(--color-gold), transparent)' }}
         />
         <div className="relative p-8">
-          <div className="flex items-center gap-4 mb-6">
-            <motion.div
-              animate={{ rotate: [0, 360] }}
-              transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
-              className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-4xl"
+          <div className="flex items-center gap-4 mb-7">
+            <div
+              className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl shrink-0"
+              style={{
+                background: 'linear-gradient(135deg, var(--color-gold-light), var(--color-gold))',
+                boxShadow: 'var(--shadow-gold)',
+              }}
             >
               💰
-            </motion.div>
+            </div>
             <div>
-              <h1 className="text-4xl font-black tracking-tighter uppercase">
-                {T('Gains par Véhicule', 'الأرباح حسب المركبة', lang)}
+              <h1 className="text-3xl font-black tracking-tighter uppercase" style={{ color: 'var(--color-text)' }}>
+                {T('Bénéfices par voiture', 'أرباح كل سيارة')}
               </h1>
-              <p className="text-purple-100 text-sm mt-1 font-semibold">
-                {T('Analysez vos revenus et dépenses en détail', 'حلل إيراداتك ونفقاتك بالتفصيل', lang)}
+              <p className="text-sm mt-1 font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                {T('Locations, dépenses et répartition des bénéfices',
+                   'الإيجارات والمصاريف وتوزيع الأرباح')}
               </p>
             </div>
           </div>
 
-          {/* Filters */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Car Selection */}
             <div>
-              <label className="block text-xs font-bold text-purple-100 mb-2 uppercase tracking-wide">
-                {T('Sélectionner un véhicule', 'اختر مركبة', lang)}
-              </label>
-              <select
-                value={selectedCarId}
-                onChange={(e) => setSelectedCarId(e.target.value)}
-                className="w-full bg-white/15 border border-white/30 rounded-xl px-4 py-2.5 text-white placeholder-white/60 focus:ring-2 focus:ring-white/50 outline-none text-sm font-semibold backdrop-blur-sm hover:bg-white/20 transition-all"
-              >
-                <option value="" className="bg-gray-800">
-                  {T('-- Choisir une voiture --', '-- اختر سيارة --', lang)}
-                </option>
+              <label className="label-saas">{T('Véhicule', 'المركبة')}</label>
+              <select value={selectedCarId} onChange={e => setSelectedCarId(e.target.value)} className="input-saas">
+                <option value="">{T('-- Choisir une voiture --', '-- اختر سيارة --')}</option>
                 {cars.map(car => (
-                  <option key={car.id} value={car.id} className="bg-gray-800">
+                  <option key={car.id} value={car.id}>
                     {car.brand} {car.model} ({car.registration})
+                    {car.ownerType === 'third_party' ? ' — ' + T('tiers', 'طرف ثالث') : ''}
                   </option>
                 ))}
               </select>
             </div>
-
-            {/* Start Date */}
             <div>
-              <label className="block text-xs font-bold text-purple-100 mb-2 uppercase tracking-wide">
-                {T('Date de début', 'تاريخ البداية', lang)}
-              </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full bg-white/15 border border-white/30 rounded-xl px-4 py-2.5 text-white placeholder-white/60 focus:ring-2 focus:ring-white/50 outline-none text-sm font-semibold backdrop-blur-sm hover:bg-white/20 transition-all"
-              />
+              <label className="label-saas">{T('Date de début', 'تاريخ البداية')}</label>
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input-saas" />
             </div>
-
-            {/* End Date */}
             <div>
-              <label className="block text-xs font-bold text-purple-100 mb-2 uppercase tracking-wide">
-                {T('Date de fin', 'تاريخ النهاية', lang)}
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full bg-white/15 border border-white/30 rounded-xl px-4 py-2.5 text-white placeholder-white/60 focus:ring-2 focus:ring-white/50 outline-none text-sm font-semibold backdrop-blur-sm hover:bg-white/20 transition-all"
-              />
+              <label className="label-saas">{T('Date de fin', 'تاريخ النهاية')}</label>
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="input-saas" />
             </div>
-
-            {/* Generate Button */}
             <div className="flex items-end">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleGenerate}
-                disabled={loading || !selectedCarId}
-                className="w-full bg-white text-purple-700 font-black py-2.5 px-4 rounded-xl shadow-xl hover:shadow-2xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-sm uppercase tracking-wide"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    {T('Génération...', 'جاري...', lang)}
-                  </>
-                ) : (
-                  <>
-                    <TrendingUp size={16} />
-                    {T('Générer', 'إنشاء', lang)}
-                  </>
-                )}
-              </motion.button>
+              <button onClick={handleGenerate} disabled={loading || !selectedCarId} className="btn-saas-primary w-full">
+                {loading
+                  ? <><Loader2 size={16} className="animate-spin" />{T('Génération...', 'جاري...')}</>
+                  : <><TrendingUp size={16} />{T('Générer', 'إنشاء')}</>}
+              </button>
             </div>
           </div>
         </div>
       </motion.div>
 
-      {/* Empty State - Before Generation */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
+        {/* État initial */}
         {!generated && !loading && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
+            key="empty"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="flex items-center justify-center py-24"
           >
             <div className="text-center max-w-md">
-              <div className="text-7xl mb-4 opacity-20">📊</div>
-              <p className="text-lg font-bold text-gray-600 mb-2">
-                {T('Prêt à analyser vos gains ?', 'هل أنت مستعد لتحليل أرباحك؟', lang)}
+              <div className="text-7xl mb-4 opacity-25">📊</div>
+              <p className="text-lg font-bold mb-2" style={{ color: 'var(--color-text-soft)' }}>
+                {T('Prêt à analyser vos bénéfices ?', 'هل أنت مستعد لتحليل أرباحك؟')}
               </p>
-              <p className="text-sm text-gray-400">
-                {T('Sélectionnez un véhicule et une plage de dates, puis cliquez sur Générer pour voir vos statistiques détaillées.', 'اختر مركبة ونطاق تاريخ، ثم انقر على إنشاء لرؤية إحصائياتك المفصلة.', lang)}
+              <p className="text-sm" style={{ color: 'var(--color-text-dim)' }}>
+                {T('Sélectionnez un véhicule et une période, puis cliquez sur Générer.',
+                   'اختر مركبة وفترة، ثم انقر على إنشاء.')}
               </p>
             </div>
           </motion.div>
         )}
 
-        {/* Results - After Generation */}
-        {generated && !loading && selectedCar && (
+        {generated && !loading && selectedCar && benefits && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="space-y-5"
+            key="results"
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            className="space-y-6"
           >
-            <motion.div
-              whileHover={{ y: -4 }}
-              className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden"
-            >
-              <div className="flex flex-col sm:flex-row items-center gap-4 p-6">
-                <div className="w-32 h-24 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-200">
+            {/* ── Fiche véhicule + propriétaire ────────────────────── */}
+            <div className="rounded-2xl overflow-hidden card-gold">
+              <div className="flex flex-col sm:flex-row items-center gap-5 p-6">
+                <div
+                  className="w-36 h-24 rounded-xl overflow-hidden shrink-0"
+                  style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)' }}
+                >
                   <img
                     src={selectedCar.images?.[0] || 'https://picsum.photos/seed/car/400/300'}
                     alt={`${selectedCar.brand} ${selectedCar.model}`}
                     className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
                   />
                 </div>
-                <div className="flex-1 text-center sm:text-left">
-                  <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter">
+                <div className="flex-1 text-center sm:text-left min-w-0">
+                  <h2 className="text-2xl font-black uppercase tracking-tighter" style={{ color: 'var(--color-text)' }}>
                     {selectedCar.brand} {selectedCar.model}
                   </h2>
-                  <p className="text-emerald-600 font-bold text-sm">{selectedCar.registration}</p>
-                  <div className="flex flex-wrap gap-3 mt-3">
-                    <span className="text-xs font-bold bg-blue-100 text-blue-700 px-3 py-1 rounded-full">
-                      📅 {selectedCar.year}
-                    </span>
-                    <span className="text-xs font-bold bg-purple-100 text-purple-700 px-3 py-1 rounded-full">
-                      ⛽ {selectedCar.energy}
-                    </span>
-                    <span className="text-xs font-bold bg-gray-100 text-gray-700 px-3 py-1 rounded-full">
-                      🎯 {selectedCar.mileage.toLocaleString()} KM
-                    </span>
+                  <p className="font-bold text-sm" style={{ color: 'var(--color-gold)' }}>
+                    {selectedCar.registration}
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-3 justify-center sm:justify-start">
+                    {[
+                      `📅 ${selectedCar.year}`,
+                      `⛽ ${selectedCar.energy}`,
+                      `🎯 ${Number(selectedCar.mileage || 0).toLocaleString('fr-FR')} km`,
+                    ].map(chip => (
+                      <span
+                        key={chip}
+                        className="text-[11px] font-bold px-3 py-1 rounded-full"
+                        style={{ background: 'var(--color-surface-2)', color: 'var(--color-text-soft)' }}
+                      >
+                        {chip}
+                      </span>
+                    ))}
                   </div>
                 </div>
-              </div>
-            </motion.div>
 
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                {
-                  label: T('Total Facturé', 'الإجمالي المفاتر', lang),
-                  value: fmt(totalInvoiced),
-                  subtext: `${nonCancelledRes.length} ${T('location(s)', 'إيجار', lang)}`,
-                  gradient: 'from-blue-500 to-blue-600',
-                  icon: '📋'
-                },
-                {
-                  label: T('Encaissé', 'المحصّل', lang),
-                  value: fmt(totalPaid),
-                  subtext: T('Reçu', 'تم الحصول عليه', lang),
-                  gradient: 'from-emerald-500 to-teal-600',
-                  icon: '✓'
-                },
-                {
-                  label: T('Dépenses', 'المصاريف', lang),
-                  value: fmt(totalExpenses),
-                  subtext: `${expenses.length} ${T('item(s)', 'عناصر', lang)}`,
-                  gradient: 'from-red-500 to-rose-600',
-                  icon: '💰'
-                },
-                {
-                  label: T('Bénéfice Net', 'صافي الأرباح', lang),
-                  value: fmt(netBenefit),
-                  subtext: netBenefit >= 0 ? T('Profit', 'ربح', lang) : T('Perte', 'خسارة', lang),
-                  gradient: netBenefit >= 0 ? 'from-green-500 to-emerald-600' : 'from-orange-500 to-red-600',
-                  icon: netBenefit >= 0 ? '📈' : '📉'
-                }
-              ].map((kpi, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: i * 0.08 }}
-                  whileHover={{ scale: 1.03, y: -2 }}
-                  className={`bg-gradient-to-br ${kpi.gradient} rounded-2xl p-4 text-white shadow-lg`}
+                {/* Badge propriétaire */}
+                <div
+                  className="rounded-xl px-4 py-3 text-center sm:text-left shrink-0"
+                  style={{
+                    background: benefits.isThirdParty ? 'var(--color-gold-soft)' : 'var(--color-surface-2)',
+                    border: `1px solid ${benefits.isThirdParty ? 'var(--color-vel-border-gold)' : 'var(--color-border-soft)'}`,
+                  }}
                 >
-                  <div className="flex items-start justify-between mb-2">
-                    <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest leading-tight">
-                      {kpi.label}
-                    </p>
-                    <span className="text-2xl">{kpi.icon}</span>
-                  </div>
-                  <p className="text-xl font-black leading-tight">{kpi.value}</p>
-                  <p className="text-white/60 text-[10px] mt-0.5 font-semibold">{kpi.subtext} DZD</p>
-                </motion.div>
-              ))}
+                  <p className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 justify-center sm:justify-start"
+                     style={{ color: 'var(--color-text-muted)' }}>
+                    {benefits.isThirdParty ? <Users size={12} /> : <Building2 size={12} />}
+                    {T('Propriétaire', 'المالك')}
+                  </p>
+                  <p className="font-black text-sm mt-1"
+                     style={{ color: benefits.isThirdParty ? 'var(--color-gold)' : 'var(--color-text)' }}>
+                    {benefits.isThirdParty
+                      ? (benefits.ownerName || T('Tiers', 'طرف ثالث'))
+                      : T("Agence (personnelle)", 'الوكالة (شخصية)')}
+                  </p>
+                  {benefits.isThirdParty && (
+                    <>
+                      {benefits.ownerPhone && (
+                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                          {benefits.ownerPhone}
+                        </p>
+                      )}
+                      <p className="text-[11px] mt-1 font-semibold" style={{ color: 'var(--color-text-dim)' }}>
+                        {T('Part agence', 'حصة الوكالة')} : {fmt(benefits.agencyDailyShare)} DA/{T('jour', 'يوم')}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
 
-            {/* Reservations Section */}
-            {reservations.length > 0 && (
+            {/* ── KPI ──────────────────────────────────────────────── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {kpiCard('inv', T('Total facturé', 'الإجمالي المفوتر'), fmt(benefits.totalInvoiced),
+                `${benefits.rentalsCount} ${T('location(s)', 'إيجار')} · ${benefits.totalDays} ${T('jours', 'يوم')}`,
+                'var(--color-act-edit)', <FileText size={16} />, 0)}
+              {kpiCard('paid', T('Encaissé', 'المحصّل'), fmt(benefits.totalPaid),
+                `${T('Reste dû', 'المتبقي')} : ${fmt(benefits.totalRemaining)} DA`,
+                'var(--color-act-success)', <Wallet size={16} />, 1)}
+              {kpiCard('exp', T('Dépenses', 'المصاريف'), fmt(benefits.totalExpenses),
+                `${benefits.expenses.length} ${T('ligne(s)', 'بند')}`,
+                'var(--color-act-delete)', <Receipt size={16} />, 2)}
+              {kpiCard('net', T('Bénéfice net', 'صافي الربح'), fmt(benefits.netBenefit),
+                benefits.netBenefit >= 0 ? T('Profit', 'ربح') : T('Perte', 'خسارة'),
+                benefits.netBenefit >= 0 ? 'var(--color-gold)' : 'var(--color-act-warning)',
+                <TrendingUp size={16} />, 3)}
+            </div>
+
+            {/* ── Répartition agence / propriétaire ────────────────── */}
+            {benefits.isThirdParty && (
               <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden"
+                initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.12 }}
+                className="rounded-2xl overflow-hidden"
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-vel-border-gold)' }}
               >
-                <div className="bg-emerald-50 border-b border-emerald-100 px-6 py-4 flex items-center justify-between">
-                  <h3 className="text-lg font-black text-emerald-700 uppercase tracking-tighter flex items-center gap-2">
-                    <Calendar size={18} />
-                    {T('Locations', 'الإيجارات', lang)} ({reservations.length})
+                <div className="px-6 py-4" style={{ borderBottom: '1px solid var(--color-border)' }}>
+                  <h3 className="text-sm font-black uppercase tracking-tighter flex items-center gap-2"
+                      style={{ color: 'var(--color-gold)' }}>
+                    <Users size={16} />
+                    {T('Répartition des bénéfices', 'توزيع الأرباح')}
                   </h3>
-                  <span className="text-sm font-bold text-emerald-600">
-                    +{fmt(totalPaid)} DZD
-                  </span>
+                  <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-dim)' }}>
+                    {T(
+                      `L'agence retient ${fmt(benefits.agencyDailyShare)} DA par jour loué. Les dépenses du véhicule sont déduites de la part du propriétaire.`,
+                      `تحتفظ الوكالة بـ ${fmt(benefits.agencyDailyShare)} دج عن كل يوم إيجار. تُخصم مصاريف المركبة من حصة المالك.`
+                    )}
+                  </p>
                 </div>
 
-                <div className="divide-y divide-gray-100">
-                  {reservations.map((res, i) => {
-                    const paid = calcPaid(res);
-                    const debt = Number(res.remainingPayment) || 0;
-                    const total = Number(res.totalPrice) || 0;
-                    const isOpen = expandedRes === res.id;
-
-                    return (
-                      <div key={res.id}>
-                        <button
-                          onClick={() => setExpandedRes(isOpen ? null : res.id)}
-                          className="w-full text-left px-6 py-4 hover:bg-gray-50 transition-colors flex items-center justify-between"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-gray-800">
-                              {res.client?.firstName} {res.client?.lastName}
-                            </p>
-                            <p className="text-sm text-gray-500 flex items-center gap-2 mt-1">
-                              <Clock size={14} />
-                              {res.step1?.departureDate} → {res.step1?.returnDate}
-                              <span className="font-bold">({res.totalDays}j)</span>
-                            </p>
-                          </div>
-                          <div className="flex-shrink-0 text-right ml-4 space-y-1">
-                            <p className="font-black text-emerald-600">✓ {fmt(paid)}</p>
-                            {debt > 0 && (
-                              <p className="text-sm font-bold text-orange-500">⏳ {fmt(debt)}</p>
-                            )}
-                          </div>
-                          {isOpen ? (
-                            <ChevronUp size={18} className="text-gray-400 ml-2" />
-                          ) : (
-                            <ChevronDown size={18} className="text-gray-400 ml-2" />
-                          )}
-                        </button>
-
-                        <AnimatePresence>
-                          {isOpen && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: 'auto', opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              className="overflow-hidden bg-emerald-50/40 border-t border-emerald-100"
-                            >
-                              <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-                                <div className="bg-white rounded-lg border border-gray-200 p-3">
-                                  <p className="text-gray-500 text-xs font-semibold">{T('Total', 'الإجمالي', lang)}</p>
-                                  <p className="font-black text-gray-800 mt-1">{fmt(total)} DZD</p>
-                                </div>
-                                <div className="bg-white rounded-lg border border-gray-200 p-3">
-                                  <p className="text-gray-500 text-xs font-semibold">{T('Avance', 'الأولى', lang)}</p>
-                                  <p className="font-black text-blue-600 mt-1">{fmt(Number(res.advancePayment) || 0)} DZD</p>
-                                </div>
-                                <div className="bg-white rounded-lg border border-gray-200 p-3">
-                                  <p className="text-gray-500 text-xs font-semibold">{T('Payé', 'المدفوع', lang)}</p>
-                                  <p className="font-black text-emerald-600 mt-1">{fmt(paid)} DZD</p>
-                                </div>
-                                <div className="bg-white rounded-lg border border-gray-200 p-3">
-                                  <p className="text-gray-500 text-xs font-semibold">{T('Reste', 'المتبقي', lang)}</p>
-                                  <p className={`font-black mt-1 ${debt > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                                    {fmt(debt)} DZD
-                                  </p>
-                                </div>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {nonCancelledRes.length > 0 && (
-                  <div className="bg-emerald-50 border-t border-emerald-100 px-6 py-3 flex items-center justify-between text-sm">
-                    <span className="font-bold text-emerald-700">
-                      {T('Total Locations', 'إجمالي الإيجارات', lang)}
-                    </span>
-                    <span className="font-black text-emerald-700">{fmt(totalInvoiced)} DZD</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x"
+                     style={{ borderColor: 'var(--color-border)' }}>
+                  <div className="p-6">
+                    <p className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5"
+                       style={{ color: 'var(--color-text-muted)' }}>
+                      <Building2 size={12} /> {T("Part de l'agence", 'حصة الوكالة')}
+                    </p>
+                    <p className="text-3xl font-black mt-2" style={{ color: 'var(--color-gold)' }}>
+                      {fmt(benefits.agencyBenefit)} <span className="text-sm">DA</span>
+                    </p>
+                    <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-dim)' }}>
+                      {benefits.totalDays} {T('jours', 'يوم')} × {fmt(benefits.agencyDailyShare)} DA
+                    </p>
                   </div>
-                )}
-              </motion.div>
-            )}
 
-            {/* Expenses Section */}
-            {expenses.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden"
-              >
-                <div className="bg-red-50 border-b border-red-100 px-6 py-4 flex items-center justify-between">
-                  <h3 className="text-lg font-black text-red-700 uppercase tracking-tighter flex items-center gap-2">
-                    <DollarSign size={18} />
-                    {T('Dépenses', 'المصاريف', lang)} ({expenses.length})
-                  </h3>
-                  <span className="text-sm font-bold text-red-600">
-                    -{fmt(totalExpenses)} DZD
-                  </span>
-                </div>
-
-                <div className="divide-y divide-gray-100">
-                  {expenses.map((exp, i) => {
-                    const isOpen = expandedExp === exp.id;
-
-                    return (
-                      <div key={exp.id}>
-                        <button
-                          onClick={() => setExpandedExp(isOpen ? null : exp.id)}
-                          className="w-full text-left px-6 py-4 hover:bg-gray-50 transition-colors flex items-center justify-between"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-gray-800">
-                              {exp.expenseName || exp.type.toUpperCase()}
-                            </p>
-                            <p className="text-sm text-gray-500 flex items-center gap-2 mt-1">
-                              <Calendar size={14} />
-                              {fmtD(exp.date)}
-                            </p>
-                          </div>
-                          <div className="flex-shrink-0 text-right ml-4">
-                            <p className="font-black text-red-600">-{fmt(Number(exp.cost) || 0)} DZD</p>
-                          </div>
-                          {isOpen ? (
-                            <ChevronUp size={18} className="text-gray-400 ml-2" />
-                          ) : (
-                            <ChevronDown size={18} className="text-gray-400 ml-2" />
-                          )}
-                        </button>
-
-                        <AnimatePresence>
-                          {isOpen && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: 'auto', opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              className="overflow-hidden bg-red-50/40 border-t border-red-100"
-                            >
-                              <div className="px-6 py-4 space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                  <span className="text-gray-600">{T('Type', 'النوع', lang)}:</span>
-                                  <span className="font-bold text-gray-800">{exp.type}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-600">{T('Montant', 'المبلغ', lang)}:</span>
-                                  <span className="font-black text-red-600">{fmt(Number(exp.cost) || 0)} DZD</span>
-                                </div>
-                                {exp.note && (
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">{T('Note', 'ملاحظة', lang)}:</span>
-                                    <span className="text-gray-800">{exp.note}</span>
-                                  </div>
-                                )}
-                                {exp.currentMileage && (
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">{T('Kilométrage', 'المسافة', lang)}:</span>
-                                    <span className="text-gray-800">{exp.currentMileage} KM</span>
-                                  </div>
-                                )}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="bg-red-50 border-t border-red-100 px-6 py-3 flex items-center justify-between text-sm">
-                  <span className="font-bold text-red-700">
-                    {T('Total Dépenses', 'إجمالي المصاريف', lang)}
-                  </span>
-                  <span className="font-black text-red-700">-{fmt(totalExpenses)} DZD</span>
+                  <div className="p-6">
+                    <p className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5"
+                       style={{ color: 'var(--color-text-muted)' }}>
+                      <Users size={12} /> {T('Part du propriétaire', 'حصة المالك')}
+                    </p>
+                    <p className="text-3xl font-black mt-2"
+                       style={{ color: benefits.ownerBenefit >= 0 ? 'var(--color-act-success)' : 'var(--color-act-delete)' }}>
+                      {fmt(benefits.ownerBenefit)} <span className="text-sm">DA</span>
+                    </p>
+                    <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-dim)' }}>
+                      {fmt(benefits.totalPaid - benefits.agencyBenefit)} {T('encaissé', 'محصّل')} − {fmt(benefits.totalExpenses)} {T('dépenses', 'مصاريف')}
+                    </p>
+                  </div>
                 </div>
               </motion.div>
             )}
 
-            {/* Summary Section */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 }}
-              className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden"
-            >
-              <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-indigo-100 px-6 py-4">
-                <h3 className="text-lg font-black text-indigo-700 uppercase tracking-tighter">
-                  {T('Résumé Financier', 'الملخص المالي', lang)}
-                </h3>
-              </div>
-
-              <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  {
-                    label: T('Facturé', 'المفاتر', lang),
-                    value: fmt(totalInvoiced),
-                    color: 'text-blue-600'
-                  },
-                  {
-                    label: T('Encaissé', 'المحصّل', lang),
-                    value: fmt(totalPaid),
-                    color: 'text-emerald-600'
-                  },
-                  {
-                    label: T('Reste', 'المتبقي', lang),
-                    value: fmt(totalRemaining),
-                    color: 'text-orange-600'
-                  },
-                  {
-                    label: T('Dépenses', 'المصاريف', lang),
-                    value: fmt(totalExpenses),
-                    color: 'text-red-600'
-                  }
-                ].map((item, i) => (
-                  <div key={i} className="text-center">
-                    <p className="text-xs font-bold text-gray-500 uppercase mb-2">{item.label}</p>
-                    <p className={`text-2xl font-black ${item.color}`}>{item.value}</p>
-                    <p className="text-xs text-gray-400 mt-1">DZD</p>
-                  </div>
+            {/* ── Onglets locations / dépenses ─────────────────────── */}
+            <div className="rounded-2xl overflow-hidden"
+                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+              <div className="flex" style={{ borderBottom: '1px solid var(--color-border)' }}>
+                {([
+                  { id: 'rentals',  label: `${T('Locations', 'الإيجارات')} (${benefits.lines.length})`,   icon: <Calendar size={15} /> },
+                  { id: 'expenses', label: `${T('Dépenses', 'المصاريف')} (${benefits.expenses.length})`, icon: <Receipt size={15} /> },
+                ] as const).map(({ id, label, icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => setTab(id)}
+                    className="relative flex-1 px-6 py-4 text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                    style={{ color: tab === id ? 'var(--color-gold)' : 'var(--color-text-muted)' }}
+                  >
+                    {icon}{label}
+                    {tab === id && (
+                      <motion.span
+                        layoutId="gains-tab"
+                        className="absolute inset-x-0 bottom-0 h-0.5"
+                        style={{ background: 'var(--color-gold)' }}
+                      />
+                    )}
+                  </button>
                 ))}
               </div>
 
-              <div className={`border-t border-gray-200 px-6 py-4 bg-gradient-to-r ${netBenefit >= 0 ? 'from-green-50 to-emerald-50' : 'from-orange-50 to-red-50'}`}>
-                <div className="flex items-center justify-between">
-                  <span className={`text-lg font-black ${netBenefit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                    {T('Bénéfice Net', 'صافي الأرباح', lang)}
-                  </span>
-                  <span className={`text-3xl font-black ${netBenefit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {netBenefit >= 0 ? '+' : ''}{fmt(netBenefit)} DZD
-                  </span>
-                </div>
-              </div>
-            </motion.div>
+              {/* Locations */}
+              {tab === 'rentals' && (
+                <div>
+                  {benefits.lines.length === 0 ? (
+                    <p className="text-center py-12 text-sm" style={{ color: 'var(--color-text-dim)' }}>
+                      {T('Aucune location sur cette période.', 'لا توجد إيجارات في هذه الفترة.')}
+                    </p>
+                  ) : benefits.lines.map(line => {
+                    const open = expandedRes === line.id;
+                    return (
+                      <div key={line.id} style={{ borderTop: '1px solid var(--color-border-soft)' }}>
+                        <button
+                          onClick={() => setExpandedRes(open ? null : line.id)}
+                          className="w-full text-left px-6 py-4 flex items-center gap-4 cursor-pointer transition-colors hover:bg-[var(--color-surface-2)]"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold truncate" style={{ color: 'var(--color-text)' }}>
+                              {line.clientName}
+                            </p>
+                            <p className="text-xs flex items-center gap-2 mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                              <Clock size={13} />
+                              {fmtD(line.departureDate)} → {fmtD(line.returnDate)}
+                              <span className="font-bold">({line.days} {T('j', 'ي')})</span>
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="font-black" style={{ color: 'var(--color-act-success)' }}>
+                              {fmt(line.paid)} DA
+                            </p>
+                            {line.remaining > 0 && (
+                              <p className="text-xs font-bold" style={{ color: 'var(--color-act-warning)' }}>
+                                {T('reste', 'متبقي')} {fmt(line.remaining)}
+                              </p>
+                            )}
+                          </div>
+                          <motion.span animate={{ rotate: open ? 180 : 0 }} style={{ color: 'var(--color-text-dim)' }}>
+                            <ChevronDown size={18} />
+                          </motion.span>
+                        </button>
 
-            {/* Empty States */}
-            {reservations.length === 0 && expenses.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="bg-blue-50 border border-blue-200 rounded-2xl p-8 text-center"
-              >
-                <AlertCircle className="w-12 h-12 text-blue-600 mx-auto mb-3" />
-                <p className="text-blue-800 font-semibold">
-                  {T('Aucune donnée pour cette période', 'لا توجد بيانات لهذه الفترة', lang)}
+                        <AnimatePresence initial={false}>
+                          {open && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                              className="overflow-hidden"
+                              style={{ background: 'var(--color-bg)' }}
+                            >
+                              <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                {[
+                                  [T('Total', 'الإجمالي'), fmt(line.total), 'var(--color-text)'],
+                                  [T('Encaissé', 'المحصّل'), fmt(line.paid), 'var(--color-act-success)'],
+                                  [T('Reste', 'المتبقي'), fmt(line.remaining),
+                                   line.remaining > 0 ? 'var(--color-act-warning)' : 'var(--color-text-muted)'],
+                                  ...(benefits.isThirdParty
+                                    ? [
+                                        [T('Part agence', 'حصة الوكالة'), fmt(line.agencyShare), 'var(--color-gold)'] as const,
+                                        [T('Part propriétaire', 'حصة المالك'), fmt(line.ownerShare), 'var(--color-act-success)'] as const,
+                                      ]
+                                    : []),
+                                ].map(([label, value, color], i) => (
+                                  <div key={i} className="rounded-lg p-3"
+                                       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-soft)' }}>
+                                    <p className="text-[10px] font-semibold uppercase tracking-wide"
+                                       style={{ color: 'var(--color-text-muted)' }}>{label}</p>
+                                    <p className="font-black mt-1" style={{ color: color as string }}>{value} DA</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Dépenses */}
+              {tab === 'expenses' && (
+                <div>
+                  {benefits.expenses.length === 0 ? (
+                    <p className="text-center py-12 text-sm" style={{ color: 'var(--color-text-dim)' }}>
+                      {T('Aucune dépense sur cette période.', 'لا توجد مصاريف في هذه الفترة.')}
+                    </p>
+                  ) : benefits.expenses.map(exp => {
+                    const open = expandedExp === exp.id;
+                    return (
+                      <div key={exp.id} style={{ borderTop: '1px solid var(--color-border-soft)' }}>
+                        <button
+                          onClick={() => setExpandedExp(open ? null : exp.id)}
+                          className="w-full text-left px-6 py-4 flex items-center gap-4 cursor-pointer transition-colors hover:bg-[var(--color-surface-2)]"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold truncate" style={{ color: 'var(--color-text)' }}>
+                              {exp.expenseName || String(exp.type).toUpperCase()}
+                            </p>
+                            <p className="text-xs flex items-center gap-2 mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                              <Calendar size={13} /> {fmtD(exp.date)}
+                            </p>
+                          </div>
+                          <p className="font-black shrink-0" style={{ color: 'var(--color-act-delete)' }}>
+                            − {fmt(Number(exp.cost) || 0)} DA
+                          </p>
+                          <motion.span animate={{ rotate: open ? 180 : 0 }} style={{ color: 'var(--color-text-dim)' }}>
+                            <ChevronDown size={18} />
+                          </motion.span>
+                        </button>
+
+                        <AnimatePresence initial={false}>
+                          {open && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                              className="overflow-hidden"
+                              style={{ background: 'var(--color-bg)' }}
+                            >
+                              <div className="px-6 py-4 space-y-2 text-sm">
+                                {[
+                                  [T('Type', 'النوع'), String(exp.type)],
+                                  [T('Montant', 'المبلغ'), `${fmt(Number(exp.cost) || 0)} DA`],
+                                  ...(exp.note ? [[T('Note', 'ملاحظة'), exp.note]] : []),
+                                  ...(exp.currentMileage ? [[T('Kilométrage', 'المسافة'), `${exp.currentMileage} km`]] : []),
+                                ].map(([k, v], i) => (
+                                  <div key={i} className="flex justify-between gap-4">
+                                    <span style={{ color: 'var(--color-text-muted)' }}>{k}</span>
+                                    <span className="font-semibold text-right" style={{ color: 'var(--color-text)' }}>{v}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {benefits.lines.length === 0 && benefits.expenses.length === 0 && (
+              <div className="rounded-2xl p-8 text-center"
+                   style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)' }}>
+                <AlertCircle className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--color-text-dim)' }} />
+                <p className="font-semibold" style={{ color: 'var(--color-text-soft)' }}>
+                  {T('Aucune donnée pour cette période', 'لا توجد بيانات لهذه الفترة')}
                 </p>
-              </motion.div>
+              </div>
             )}
 
-            {/* Print Button */}
-            <div className="flex justify-center pt-4">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handlePrint}
-                disabled={loading}
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 disabled:opacity-50 uppercase tracking-wide"
-              >
+            {/* ── Impression ───────────────────────────────────────── */}
+            <div className="flex flex-wrap justify-center gap-4 pt-2">
+              <button onClick={handlePrintFull} className="btn-act-print px-8">
                 <Printer size={18} />
-                {T('Imprimer le Rapport', 'طباعة التقرير', lang)}
-              </motion.button>
+                {T('Rapport interne complet', 'التقرير الداخلي الكامل')}
+              </button>
+
+              {benefits.isThirdParty && (
+                <div className="flex flex-col items-center gap-1.5">
+                  <button onClick={handlePrintOwner} className="btn-saas-primary px-8">
+                    <FileText size={18} />
+                    {T('Rapport propriétaire', 'تقرير المالك')}
+                  </button>
+                  <p className="text-[11px] text-center max-w-xs" style={{ color: 'var(--color-text-dim)' }}>
+                    {T("Ne mentionne pas la part de l'agence.", 'لا يذكر حصة الوكالة.')}
+                  </p>
+                </div>
+              )}
             </div>
           </motion.div>
         )}

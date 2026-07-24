@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 import { sessionService } from '../utils/sessionService';
-import { Car, Client, Agency, Worker, WorkerAdvance, WorkerAbsence, WorkerPayment, StoreExpense, VehicleExpense, MaintenanceAlert, WebsiteOrder, ReservationDetails, SpecialOffer, ContactInfo, WebsiteSettings, PromoCode } from '../types';
+import { Car, Client, Agency, Worker, WorkerAdvance, WorkerAbsence, WorkerPayment, StoreExpense, VehicleExpense, MaintenanceAlert, WebsiteOrder, ReservationDetails, SpecialOffer, ContactInfo, WebsiteSettings, PromoCode, Entreprise, EntrepriseStats, CurrencySetting, CurrencyCode, MileagePolicy, ContractOptions, WorkerRole, WorkerPermissions } from '../types';
+import { parseCurrencyConfig, DEFAULT_CURRENCIES } from '../utils/currency';
 
 // Generic database service functions
 export class DatabaseService {
@@ -31,6 +32,14 @@ export class DatabaseService {
       status: dbCar.status === 'maintenance' ? 'maintenance' : 'disponible',
       // === true : reste false tant que la migration n'a pas ajouté la colonne
       isHiddenFromSite: dbCar.is_hidden_from_site === true,
+
+      // Propriétaire — 'personal' tant que la migration n'a pas tourné.
+      ownerType: dbCar.owner_type === 'third_party' ? 'third_party' : 'personal',
+      ownerName: dbCar.owner_name || undefined,
+      ownerPhone: dbCar.owner_phone || undefined,
+      agencyDailyShare: Number(dbCar.agency_daily_share) || 0,
+      // Tarifs en devises étrangères (jsonb).
+      currencyConfig: parseCurrencyConfig(dbCar.currency_config),
     };
   }
 
@@ -642,6 +651,16 @@ export class DatabaseService {
       baseSalary: data.base_salary,
       username: data.username,
       password: data.password,
+      // Colonnes ajoutées par migration_2026_07.sql — valeurs de repli tant
+      // que la migration n'a pas été appliquée.
+      roleId: data.role_id || undefined,
+      roleName: data.role_name || undefined,
+      idCardNumber: data.id_card_number || undefined,
+      startDate: data.start_date || undefined,
+      isPaid: data.is_paid !== false,
+      isActive: data.is_active !== false,
+      hasAccount: data.has_account === true || Boolean(data.user_id),
+      userId: data.user_id || undefined,
       advances: [],
       absences: [],
       payments: [],
@@ -649,39 +668,48 @@ export class DatabaseService {
     } as Worker;
   }
 
-  static async createWorker(worker: Omit<Worker, 'id' | 'createdAt' | 'advances' | 'absences' | 'payments'>): Promise<Worker> {
-    // Create the worker as a REAL Supabase Auth account (auth.users) so the
-    // worker can log in normally with email + password. The SECURITY DEFINER
-    // RPC create_worker_account (see main.sql) creates both the auth user and
-    // the workers row in one transaction. An admin must be authenticated for
-    // the RPC (grant is to `authenticated`), so ensure the Supabase session.
-    console.log('[DatabaseService] Creating worker account:', worker.email);
+  static async createWorker(
+    worker: Omit<Worker, 'id' | 'createdAt' | 'advances' | 'absences' | 'payments'>
+  ): Promise<Worker> {
+    // Un employé peut exister SANS compte de connexion. Le compte Supabase Auth
+    // n'est créé que si `hasAccount` est vrai — c'est la RPC v2
+    // `create_worker_account` qui écrit dans auth.users ET dans workers, en une
+    // seule transaction, pour que l'employé puisse ensuite se connecter
+    // normalement depuis la page de login.
+    const wantsAccount = worker.hasAccount === true;
 
-    if (!worker.email || !worker.password) {
-      throw new Error("L'email et le mot de passe sont requis pour créer un compte employé.");
+    if (wantsAccount) {
+      if (!worker.email) throw new Error("L'email est requis pour créer un compte de connexion.");
+      if (!worker.password || worker.password.length < 6) {
+        throw new Error('Mot de passe trop court (6 caractères minimum).');
+      }
     }
 
     await sessionService.ensureSupabaseSession();
 
     const { data: result, error: rpcError } = await supabase.rpc('create_worker_account', {
-      p_email: worker.email,
-      p_password: worker.password,
-      p_full_name: worker.fullName,
-      p_date_of_birth: worker.dateOfBirth || null,
-      p_phone: worker.phone || null,
-      p_address: worker.address || null,
-      p_profile_photo: worker.profilePhoto || null,
-      p_type: worker.type || 'worker',
-      p_payment_type: worker.paymentType || null,
-      p_base_salary: worker.baseSalary || 0,
-      p_username: worker.username || null,
+      p_full_name:      worker.fullName,
+      p_phone:          worker.phone || null,
+      p_date_of_birth:  worker.dateOfBirth || null,
+      p_id_card_number: worker.idCardNumber || null,
+      p_role_id:        worker.roleId || null,
+      p_role_name:      worker.roleName || null,
+      p_start_date:     worker.startDate || null,
+      p_is_paid:        worker.isPaid !== false,
+      p_payment_type:   worker.paymentType || null,
+      p_base_salary:    worker.baseSalary || 0,
+      p_has_account:    wantsAccount,
+      p_email:          worker.email || null,
+      p_username:       worker.username || null,
+      p_password:       wantsAccount ? worker.password : null,
+      p_profile_photo:  worker.profilePhoto || null,
+      p_address:        worker.address || null,
     });
 
-    // Backward compatibility: if the RPC isn't deployed yet, fall back to a
-    // plain insert into the workers table (login then uses the RPC fallback).
+    // La RPC n'est pas encore déployée → insertion directe (sans compte auth).
     const rpcMissing = rpcError && (
       rpcError.code === 'PGRST202' ||
-      /create_worker_account/.test(rpcError.message || '') && /(not|could not) find/i.test(rpcError.message || '')
+      (/create_worker_account/.test(rpcError.message || '') && /(not|could not) find/i.test(rpcError.message || ''))
     );
 
     if (rpcError && !rpcMissing) {
@@ -698,31 +726,31 @@ export class DatabaseService {
         if (reason.includes('PASSWORD_TOO_SHORT')) {
           throw new Error('Mot de passe trop court (6 caractères minimum).');
         }
-        throw new Error(reason || "Échec de la création du compte employé.");
+        if (reason.includes('EMAIL_REQUIRED')) {
+          throw new Error("L'email est obligatoire pour activer le compte de connexion.");
+        }
+        throw new Error(reason || "Échec de la création de l'employé.");
       }
-      console.log('[DatabaseService] Worker account created:', result?.user_id);
       return this.mapWorkerRow(result.worker);
     }
 
-    // ---- Fallback path (RPC not deployed) --------------------------------
-    console.warn('[DatabaseService] create_worker_account RPC missing — falling back to direct insert.');
-    const dbWorker = {
-      full_name: worker.fullName,
-      date_of_birth: worker.dateOfBirth,
-      phone: worker.phone,
-      email: worker.email,
-      address: worker.address,
-      profile_photo: worker.profilePhoto,
-      type: worker.type,
-      payment_type: worker.paymentType,
-      base_salary: worker.baseSalary,
-      username: worker.username,
-      password: worker.password,
-    };
-
+    // ---- Repli : insertion directe (migration non appliquée) --------------
+    console.warn('[DatabaseService] create_worker_account indisponible — insertion directe.');
     const { data, error } = await supabase
       .from('workers')
-      .insert([dbWorker])
+      .insert([{
+        full_name: worker.fullName,
+        date_of_birth: worker.dateOfBirth || null,
+        phone: worker.phone || null,
+        email: worker.email || null,
+        address: worker.address || null,
+        profile_photo: worker.profilePhoto || null,
+        type: 'worker',
+        payment_type: worker.paymentType || null,
+        base_salary: worker.baseSalary || 0,
+        username: worker.username || null,
+        password: wantsAccount ? worker.password : null,
+      }])
       .select()
       .single();
 
@@ -730,9 +758,37 @@ export class DatabaseService {
       console.error('[DatabaseService] Worker creation failed:', error);
       throw error;
     }
-
-    console.log('[DatabaseService] Worker created (fallback):', data.id);
     return this.mapWorkerRow(data);
+  }
+
+  /**
+   * Active / désactive le compte de connexion d'un employé existant, ou change
+   * ses identifiants. Passe par la RPC `set_worker_account` qui manipule
+   * auth.users (impossible depuis le client sans SECURITY DEFINER).
+   */
+  static async setWorkerAccount(
+    workerId: string,
+    enabled: boolean,
+    credentials?: { email?: string; username?: string; password?: string }
+  ): Promise<void> {
+    await sessionService.ensureSupabaseSession();
+
+    const { data, error } = await supabase.rpc('set_worker_account', {
+      p_worker_id: workerId,
+      p_enabled: enabled,
+      p_email: credentials?.email || null,
+      p_username: credentials?.username || null,
+      p_password: credentials?.password || null,
+    });
+
+    if (error) throw error;
+    if (data && data.success === false) {
+      const reason: string = data.error || '';
+      if (reason.includes('EMAIL_ALREADY_EXISTS')) throw new Error('Cet email est déjà utilisé.');
+      if (reason.includes('PASSWORD_TOO_SHORT')) throw new Error('Mot de passe trop court (6 caractères minimum).');
+      if (reason.includes('EMAIL_REQUIRED')) throw new Error("L'email est obligatoire.");
+      throw new Error(reason || "Impossible de modifier le compte de l'employé.");
+    }
   }
 
   static async updateWorker(id: string, updates: Partial<Omit<Worker, 'advances' | 'absences' | 'payments'>>): Promise<Worker> {
@@ -749,6 +805,12 @@ export class DatabaseService {
     if (updates.baseSalary !== undefined) dbUpdates.base_salary = updates.baseSalary;
     if (updates.username !== undefined) dbUpdates.username = updates.username;
     if (updates.password !== undefined) dbUpdates.password = updates.password;
+    if (updates.roleId !== undefined) dbUpdates.role_id = updates.roleId || null;
+    if (updates.roleName !== undefined) dbUpdates.role_name = updates.roleName;
+    if (updates.idCardNumber !== undefined) dbUpdates.id_card_number = updates.idCardNumber;
+    if (updates.startDate !== undefined) dbUpdates.start_date = updates.startDate || null;
+    if (updates.isPaid !== undefined) dbUpdates.is_paid = updates.isPaid;
+    if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
 
     const { data, error } = await supabase
       .from('workers')
@@ -759,25 +821,7 @@ export class DatabaseService {
 
     if (error) throw error;
 
-    // Map back to camelCase for the return
-    return {
-      id: data.id,
-      fullName: data.full_name,
-      dateOfBirth: data.date_of_birth,
-      phone: data.phone,
-      email: data.email,
-      address: data.address,
-      profilePhoto: data.profile_photo,
-      type: data.type,
-      paymentType: data.payment_type,
-      baseSalary: data.base_salary,
-      username: data.username,
-      password: data.password,
-      advances: [],
-      absences: [],
-      payments: [],
-      createdAt: data.created_at,
-    };
+    return this.mapWorkerRow(data);
   }
 
   static async deleteWorker(id: string): Promise<void> {
@@ -868,6 +912,10 @@ export class DatabaseService {
       absences: payment.absences,
       net_salary: payment.netSalary,
       note: payment.note,
+      description: payment.description ?? null,
+      advance_ids: payment.advanceIds ?? [],
+      absence_ids: payment.absenceIds ?? [],
+      is_manual_amount: payment.isManualAmount === true,
     };
 
     const { data, error } = await supabase
@@ -878,6 +926,27 @@ export class DatabaseService {
 
     if (error) throw error;
 
+    // Marque comme SOLDÉS les acomptes et absences déduits de ce paiement :
+    // ils disparaissent ainsi des en-cours et ne seront pas décomptés deux fois.
+    const advanceIds = payment.advanceIds ?? [];
+    const absenceIds = payment.absenceIds ?? [];
+
+    if (advanceIds.length > 0) {
+      const { error: advErr } = await supabase
+        .from('worker_advances')
+        .update({ settled: true })
+        .in('id', advanceIds);
+      if (advErr) console.warn('[Workers] acomptes non marqués comme soldés:', advErr);
+    }
+
+    if (absenceIds.length > 0) {
+      const { error: absErr } = await supabase
+        .from('worker_absences')
+        .update({ settled: true })
+        .in('id', absenceIds);
+      if (absErr) console.warn('[Workers] absences non marquées comme soldées:', absErr);
+    }
+
     return {
       id: data.id,
       amount: data.amount,
@@ -887,6 +956,10 @@ export class DatabaseService {
       absences: data.absences,
       netSalary: data.net_salary,
       note: data.note,
+      description: data.description ?? undefined,
+      advanceIds,
+      absenceIds,
+      isManualAmount: data.is_manual_amount === true,
     };
   }
 
@@ -1031,6 +1104,16 @@ export class DatabaseService {
           protection_assurance_id,
           protection_assurance_name,
           protection_assurance_price,
+          currency_code,
+          currency_rate,
+          total_price_currency,
+          promo_code,
+          promo_discount_percentage,
+          promo_discount_amount,
+          flight_number,
+          flight_date,
+          flight_time,
+          flight_ticket_image,
           client:clients(*),
           car:cars(*),
           reservation_services(*),
@@ -1168,6 +1251,25 @@ export class DatabaseService {
         status: reservation.status || 'website_reservation',
         createdAt: reservation.created_at,
         source: 'website',
+
+        // Devise choisie par le client sur le site (le total reste en DA).
+        currencyCode: reservation.currency_code || 'DZD',
+        currencyRate: Number(reservation.currency_rate) || 1,
+        totalPriceCurrency: reservation.total_price_currency != null
+          ? Number(reservation.total_price_currency) : undefined,
+
+        // Code promo — undefined si aucun n'a été utilisé (rien à afficher).
+        promoCode: reservation.promo_code || undefined,
+        promoDiscountPercentage: reservation.promo_discount_percentage != null
+          ? Number(reservation.promo_discount_percentage) : undefined,
+        promoDiscountAmount: reservation.promo_discount_amount != null
+          ? Number(reservation.promo_discount_amount) : undefined,
+
+        // Informations de vol saisies à l'étape « informations ».
+        flightNumber: reservation.flight_number || undefined,
+        flightDate: reservation.flight_date || undefined,
+        flightTime: reservation.flight_time || undefined,
+        flightTicketImage: reservation.flight_ticket_image || undefined,
       } as WebsiteOrder;
     });
   }
@@ -1839,6 +1941,9 @@ export class DatabaseService {
       description: service.description,
       price: Math.round(Number(service.price)),
       isActive: service.is_active,
+      // Service obligatoire : coché d'office sur l'étape « Services » de tous
+      // les flux de réservation (admin et site public).
+      isMandatory: service.is_mandatory === true,
       createdAt: service.created_at,
     }));
   }
@@ -1852,6 +1957,7 @@ export class DatabaseService {
         description: service.description,
         price: service.price,
         is_active: true,
+        is_mandatory: service.isMandatory === true,
       }])
       .select()
       .single();
@@ -1864,6 +1970,7 @@ export class DatabaseService {
       description: data.description,
       price: Math.round(Number(data.price)),
       isActive: data.is_active,
+      isMandatory: data.is_mandatory === true,
       createdAt: data.created_at,
     };
   }
@@ -1876,6 +1983,7 @@ export class DatabaseService {
         description: updates.description,
         price: updates.price,
         is_active: updates.isActive,
+        is_mandatory: updates.isMandatory === true,
       })
       .eq('id', id)
       .select()
@@ -1889,6 +1997,7 @@ export class DatabaseService {
       description: data.description,
       price: Math.round(Number(data.price)),
       isActive: data.is_active,
+      isMandatory: data.is_mandatory === true,
       createdAt: data.created_at,
     };
   }

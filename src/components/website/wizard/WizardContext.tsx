@@ -3,6 +3,9 @@ import { Language, Car, Agency, SpecialOffer, ReservationStep2, AdditionalServic
 import { DatabaseService } from '../../../services/DatabaseService';
 import { getCurrentSpecialOfferForCar } from '../../../utils/specialOffers';
 import { fromYmd } from './wizardUi';
+import { useCurrency } from '../CurrencyContext';
+import { fromDzd, roundForCurrency } from '../../../utils/currency';
+import type { CurrencySetting } from '../../../types';
 
 // ═══ Modèle d'état du wizard de réservation (source unique de vérité) ═══
 // Tout l'état vit ici : naviguer entre les étapes ne perd jamais les saisies.
@@ -46,6 +49,17 @@ const emptyPersonal: ReservationStep2 = {
 
 export type PromoStatus = 'idle' | 'checking' | 'valid' | 'invalid';
 
+/** Informations de vol demandées au client à l'étape « informations ». */
+export interface FlightInfo {
+  number: string;
+  date: string;   // YYYY-MM-DD
+  time: string;   // HH:mm
+  /** URL publique du justificatif de billet téléversé. */
+  ticketImage: string;
+}
+
+const emptyFlight: FlightInfo = { number: '', date: '', time: '', ticketImage: '' };
+
 interface WizardContextValue {
   lang: Language;
   cars: Car[];
@@ -88,6 +102,10 @@ interface WizardContextValue {
   personal: ReservationStep2;
   setPersonal: React.Dispatch<React.SetStateAction<ReservationStep2>>;
 
+  // Étape 5 — informations de vol (obligatoires pour les arrivées aéroport)
+  flight: FlightInfo;
+  setFlight: React.Dispatch<React.SetStateAction<FlightInfo>>;
+
   // Étape 3 — assurance de protection
   availableAssurances: ProtectionAssurance[];
   loadingAssurances: boolean;
@@ -111,6 +129,11 @@ interface WizardContextValue {
   promoDiscountPct: number;     // % appliqué si promoStatus === 'valid'
   verifyPromo: () => Promise<void>;
   clearPromo: () => void;
+
+  // Devise d'affichage choisie sur le site (les montants restent en DA en base)
+  currency: CurrencySetting;
+  /** Formate un montant DA dans la devise choisie. */
+  money: (amountDzd: number) => string;
 
   // Tarification (remise d'offre spéciale appliquée si présente)
   days: number;
@@ -182,6 +205,10 @@ export const ReservationWizardProvider: React.FC<ProviderProps> = ({
 
   // Étape 5
   const [personal, setPersonal] = useState<ReservationStep2>(emptyPersonal);
+  const [flight, setFlight] = useState<FlightInfo>(emptyFlight);
+
+  // Devise choisie dans la barre de navigation du site
+  const { active: currency, price: money } = useCurrency();
 
   // Étape 3 — assurance de protection
   const [availableAssurances, setAvailableAssurances] = useState<ProtectionAssurance[]>([]);
@@ -248,12 +275,33 @@ export const ReservationWizardProvider: React.FC<ProviderProps> = ({
     return () => { cancelled = true; };
   }, [search?.from, search?.to]);
 
-  // Charge les services une fois
+  // Charge les services une fois. Les services OBLIGATOIRES sont cochés
+  // d'office et ne peuvent pas être retirés (voir toggleService).
   useEffect(() => {
     const load = async () => {
       try {
         setLoadingServices(true);
-        setAvailableServices(await DatabaseService.getServices());
+        const list = await DatabaseService.getServices();
+        setAvailableServices(list);
+
+        const mandatory = list
+          .filter((s: any) => s.isMandatory || s.is_mandatory)
+          .map((s: any) => ({
+            id: s.id,
+            category: s.category || 'service',
+            name: s.name || s.service_name || '',
+            description: s.description || '',
+            price: Number(s.price) || 0,
+            selected: true,
+            isMandatory: true,
+          } as AdditionalService));
+
+        if (mandatory.length > 0) {
+          setSelectedServices(prev => {
+            const missing = mandatory.filter(m => !prev.some(p => p.id === m.id));
+            return missing.length > 0 ? [...prev, ...missing] : prev;
+          });
+        }
       } catch {
         setAvailableServices([]);
       } finally {
@@ -297,6 +345,12 @@ export const ReservationWizardProvider: React.FC<ProviderProps> = ({
   };
 
   const toggleService = (service: AdditionalService) => {
+    // Un service obligatoire reste coché quoi qu'il arrive.
+    const isMandatory =
+      (service as any).isMandatory || (service as any).is_mandatory ||
+      availableServices.some((s: any) => s.id === service.id && (s.isMandatory || s.is_mandatory));
+    if (isMandatory) return;
+
     setSelectedServices(prev => {
       const exists = prev.find(s => s.id === service.id);
       return exists ? prev.filter(s => s.id !== service.id) : [...prev, service];
@@ -315,8 +369,13 @@ export const ReservationWizardProvider: React.FC<ProviderProps> = ({
       case 4:
         return true; // les services sont optionnels
       case 5:
-        // Informations personnelles — mêmes champs obligatoires que le flux existant
-        return !!(personal.firstName && personal.lastName && personal.phone && personal.email && personal.licenseNumber && personal.wilaya);
+        // Informations personnelles + informations de vol (n°, date/heure et
+        // justificatif du billet sont demandés à tous les clients).
+        return !!(
+          personal.firstName && personal.lastName && personal.phone &&
+          personal.email && personal.licenseNumber && personal.wilaya &&
+          flight.number.trim() && flight.date && flight.time && flight.ticketImage
+        );
       case 6:
         return true;
       default:
@@ -435,6 +494,17 @@ export const ReservationWizardProvider: React.FC<ProviderProps> = ({
         protection_assurance_id: selectedAssurance?.id || '',
         protection_assurance_name: selectedAssurance?.name || '',
         protection_assurance_price: selectedAssurance?.pricePerDay ?? 0,
+        // Devise vue par le client. Le total reste stocké en DA ; on garde le
+        // taux et le montant affiché pour pouvoir reproduire exactement ce que
+        // le client a validé.
+        currency_code: currency.code,
+        currency_rate: currency.rateToDzd,
+        total_price_currency: roundForCurrency(fromDzd(total, currency.rateToDzd), currency.code),
+        // Informations de vol
+        flight_number: flight.number || '',
+        flight_date: flight.date || '',
+        flight_time: flight.time || '',
+        flight_ticket_image: flight.ticketImage || '',
       };
 
       const servicesPayload = selectedServices.map(s => ({
@@ -473,6 +543,8 @@ export const ReservationWizardProvider: React.FC<ProviderProps> = ({
     search, availableCars, loadingAvailability,
     departureAgency, setDepartureAgency, differentReturnAgency, setDifferentReturnAgency, returnAgency, setReturnAgency,
     personal, setPersonal,
+    flight, setFlight,
+    currency, money,
     availableAssurances, loadingAssurances, selectedAssurance, setSelectedAssurance,
     availableServices, loadingServices, selectedServices, toggleService,
     notes, setNotes,

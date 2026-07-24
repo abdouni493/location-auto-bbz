@@ -615,19 +615,70 @@ export class EmailService {
         groupedItems[item.category].push(item);
       });
 
-      const checklistHTML = Object.entries(groupedItems).map(([cat, items]) => `
-        <div style="margin-bottom:10px;">
-          <div style="font-weight:700;font-size:12px;color:#1a3a8a;padding:5px 8px;background:#f0f1f3;border-left:4px solid #2563eb;border-radius:3px;margin-bottom:4px;">
-            ${categoryLabels[cat] || cat}
+      // Checklist : chaque ligne porte sa couleur de statut, et chaque
+      // catégorie affiche son score — lisible d'un coup d'oeil sur papier.
+      const checklistHTML = Object.entries(groupedItems).map(([cat, items]) => {
+        const list = items as any[];
+        const okCount = list.filter(i => i.checked).length;
+        const allOk = okCount === list.length;
+
+        return `
+        <div style="margin-bottom:12px;break-inside:avoid;page-break-inside:avoid;">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:11.5px;color:#14141A;padding:7px 10px;background:#FBF6E9;border-left:4px solid #B8912C;border-radius:4px;margin-bottom:5px;">
+            <span>${categoryLabels[cat] || cat}</span>
+            <span style="font-size:10.5px;font-weight:800;color:${allOk ? '#0F7B4F' : '#B8912C'};">
+              ${okCount}/${list.length}
+            </span>
           </div>
-          ${(items as any[]).map(item => `
-            <div style="display:flex;justify-content:space-between;padding:5px 8px;border-bottom:0.5px solid #ddd;font-size:12px;">
-              <span style="color:#333;">${item.name}</span>
-              <span style="font-weight:700;font-size:13px;">${item.checked ? '✅' : '❌'}</span>
+          ${list.map(item => `
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 9px;margin-bottom:2px;border-radius:4px;font-size:11.5px;background:${item.checked ? '#F1FAF5' : '#FDF2F2'};border:1px solid ${item.checked ? '#CBE9D9' : '#F3D0D0'};">
+              <span style="color:#14141A;">${item.name}</span>
+              <span style="font-weight:800;font-size:10px;white-space:nowrap;color:${item.checked ? '#0F7B4F' : '#C0392B'};">
+                ${item.checked ? '✔ ' + (isFrench ? 'CONFORME' : 'مطابق') : '✘ ' + (isFrench ? 'À SIGNALER' : 'ملاحظة')}
+              </span>
             </div>
           `).join('')}
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
+
+      // ── Galerie des photos d'inspection ──────────────────────────────────
+      // Les images sont dimensionnées pour rester nettes à l'impression et ne
+      // jamais être coupées par un saut de page.
+      const photoUrls: string[] = [
+        ...((inspectionData?.exteriorPhotos as string[]) || []),
+        ...((inspectionData?.interiorPhotos as string[]) || []),
+      ].filter(Boolean);
+
+      const photosHTML = photoUrls.length > 0 ? `
+    <div class="section" style="margin-top:10px;break-inside:avoid;page-break-inside:avoid;">
+      <div class="section-title">📸 ${isFrench ? "Photos de l'état du véhicule" : 'صور حالة المركبة'}</div>
+      <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:separate;border-spacing:6px;">
+        ${Array.from({ length: Math.ceil(photoUrls.length / 2) }, (_, row) => `
+          <tr>
+            ${[0, 1].map(col => {
+              const url = photoUrls[row * 2 + col];
+              if (!url) return '<td style="width:50%;"></td>';
+              return `
+              <td style="width:50%;vertical-align:top;">
+                <div style="border:1px solid #E0D6BC;border-radius:6px;overflow:hidden;background:#FAFAFA;">
+                  <img src="${url}" alt="${isFrench ? 'Photo inspection' : 'صورة الفحص'}"
+                       width="260"
+                       style="display:block;width:100%;max-width:260px;height:auto;object-fit:cover;" />
+                  <div style="padding:4px 7px;font-size:9.5px;color:#6B6B76;background:#F5F1E6;">
+                    ${isFrench ? 'Photo' : 'صورة'} ${row * 2 + col + 1}
+                  </div>
+                </div>
+              </td>`;
+            }).join('')}
+          </tr>
+        `).join('')}
+      </table>
+      <p style="font-size:9.5px;color:#9A9AA4;margin-top:6px;">
+        ${isFrench
+          ? 'Photos prises lors de l\'inspection et jointes au présent état des lieux.'
+          : 'صور مأخوذة أثناء الفحص ومرفقة بهذا المحضر.'}
+      </p>
+    </div>` : '';
 
       const html = `<!DOCTYPE html>
 <html dir="${textDir}" lang="${isFrench ? 'fr' : 'ar'}">
@@ -636,7 +687,13 @@ export class EmailService {
   <title>${labels.title}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; color: #222; background: white; line-height: 1.5; direction: ${textDir}; font-size: 13px; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; color: #222; background: white; line-height: 1.5; direction: ${textDir}; font-size: 13px;
+           -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    img { max-width: 100%; height: auto; }
+    @media print {
+      .section, .notes-box, .signatures { break-inside: avoid; page-break-inside: avoid; }
+      img { break-inside: avoid; page-break-inside: avoid; }
+    }
     .page { width: 100%; max-width: 210mm; padding: 12mm; margin: 0 auto; background: white; }
     .header { border-bottom: 3px solid #1a3a8a; padding-bottom: 8px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
     .logo { width: 40px; height: 40px; object-fit: contain; flex-shrink: 0; }
@@ -758,6 +815,9 @@ export class EmailService {
         ${checklistHTML || `<p style="color:#888;font-size:12px;">${isFrench ? 'Aucun élément d\'inspection' : 'لا توجد عناصر فحص'}</p>`}
       </div>
     </div>
+
+    <!-- Photos de l'inspection -->
+    ${photosHTML}
 
     <!-- Notes -->
     <div class="notes-box">

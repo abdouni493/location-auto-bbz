@@ -64,6 +64,11 @@ export class ReservationsService {
     euroRate?: number;
     assuranceEnabled?: boolean;
     assurancePercentage?: number;
+    /** Timbre fiscal : activé par l'agent sur la dernière étape. */
+    timbreEnabled?: boolean;
+    timbreAmount?: number;
+    /** Entreprise rattachée (mentions légales du contrat / de la facture). */
+    entrepriseId?: string | null;
     protectionAssuranceId?: string | null;
     protectionAssuranceName?: string | null;
     protectionAssurancePrice?: number | null;
@@ -121,6 +126,9 @@ export class ReservationsService {
         euro_rate: data.euroRate || 145,
         assurance_enabled: data.assuranceEnabled || false,
         assurance_percentage: data.assurancePercentage || null,
+        timbre_enabled: data.timbreEnabled || false,
+        timbre_amount: data.timbreAmount || 0,
+        entreprise_id: toUuidOrNull(data.entrepriseId),
         protection_assurance_id: toUuidOrNull(data.protectionAssuranceId),
         protection_assurance_name: data.protectionAssuranceName || null,
         protection_assurance_price: data.protectionAssurancePrice || 0,
@@ -333,6 +341,39 @@ export class ReservationsService {
       protectionAssuranceName: res.protection_assurance_name || undefined,
       protectionAssurancePrice: res.protection_assurance_price != null ? Number(res.protection_assurance_price) : undefined,
       protectionAssurance: mapProtectionAssurance(res.protection_assurance),
+
+      // ── Devise vue par le client (site public). Le total reste en DA. ──
+      currencyCode: res.currency_code || 'DZD',
+      currencyRate: Number(res.currency_rate) || 1,
+      totalPriceCurrency: res.total_price_currency != null ? Number(res.total_price_currency) : undefined,
+
+      // ── Code promo consommé (absent = aucun code utilisé) ──
+      promoCodeId: res.promo_code_id || undefined,
+      promoCode: res.promo_code || undefined,
+      promoDiscountPercentage: res.promo_discount_percentage != null ? Number(res.promo_discount_percentage) : undefined,
+      promoDiscountAmount: res.promo_discount_amount != null ? Number(res.promo_discount_amount) : undefined,
+
+      // ── Timbre fiscal ──
+      timbreEnabled: res.timbre_enabled === true,
+      timbreAmount: Number(res.timbre_amount) || 0,
+
+      // ── Entreprise rattachée (impression contrat / facture) ──
+      entrepriseId: res.entreprise_id || undefined,
+
+      // ── Informations de vol saisies sur le site ──
+      flightNumber: res.flight_number || undefined,
+      flightDate: res.flight_date || undefined,
+      flightTime: res.flight_time || undefined,
+      flightTicketImage: res.flight_ticket_image || undefined,
+
+      // ── Kilométrage / carburant à la clôture ──
+      mileageLimitKm: res.mileage_limit_km != null ? Number(res.mileage_limit_km) : undefined,
+      excessMileageKm: Number(res.excess_mileage_km) || 0,
+      excessMileageFee: Number(res.excess_mileage_fee) || 0,
+      missingFuelLevels: Number(res.missing_fuel_levels) || 0,
+      missingFuelFee: Number(res.missing_fuel_fee) || 0,
+
+      contractShowPrices: res.contract_show_prices !== false,
       departureInspection: (() => {
         const departureInspections = res.vehicle_inspections?.filter((i: any) => i.type === 'departure') || [];
         if (departureInspections.length === 0) return undefined;

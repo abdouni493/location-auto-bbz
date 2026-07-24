@@ -8,6 +8,9 @@ import { SpecialOffersListing } from './website/SpecialOffersListing';
 import { ContactsWebsite } from './website/ContactsWebsite';
 import { ReservationWizard } from './website/wizard/ReservationWizard';
 import { WizardSearchCriteria } from './website/wizard/WizardContext';
+import { CurrencyProvider } from './website/CurrencyContext';
+import { CurrencySwitcher } from './website/CurrencySwitcher';
+import { ThemeToggle } from './ThemeToggle';
 import { SITE_NAME } from '../constants';
 
 interface WebsiteProps {
@@ -60,6 +63,7 @@ export const Website: React.FC<WebsiteProps> = ({
   ];
 
   return (
+    <CurrencyProvider>
     <div className="min-h-screen bg-vel-void" style={{ fontFamily: 'var(--font-sans)' }}>
       {/* ── NAVBAR ── */}
       <nav className="sticky top-0 z-50 border-b border-vel-border bg-vel-void/80 backdrop-blur-xl">
@@ -74,7 +78,7 @@ export const Website: React.FC<WebsiteProps> = ({
               onClick={() => setCurrentPage('home')}
             >
               <div className="w-11 h-11 rounded-xl overflow-hidden ring-2 transition-all duration-300"
-                style={{ borderColor: 'rgba(220,38,38,0.25)', boxShadow: '0 0 16px rgba(220,38,38,0.2)' }}>
+                style={{ borderColor: 'var(--color-vel-border-gold)', boxShadow: '0 0 16px var(--color-gold-glow)' }}>
                 {websiteSettings?.logo ? (
                   <img
                     src={websiteSettings.logo}
@@ -84,7 +88,7 @@ export const Website: React.FC<WebsiteProps> = ({
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-vel-void text-xl font-black"
-                    style={{ background: 'linear-gradient(135deg, #DC2626, #B91C1C)', fontFamily: 'var(--font-display)' }}>
+                    style={{ background: 'linear-gradient(135deg, var(--color-gold-light), var(--color-gold))', fontFamily: 'var(--font-display)' }}>
                     M
                   </div>
                 )}
@@ -95,7 +99,7 @@ export const Website: React.FC<WebsiteProps> = ({
                   {SITE_NAME}
                 </h1>
                 <p className="text-[10px] font-bold tracking-[0.2em] uppercase"
-                  style={{ color: '#DC2626', fontFamily: 'var(--font-display)' }}>
+                  style={{ color: 'var(--color-gold)', fontFamily: 'var(--font-display)' }}>
                   {{ fr: 'Location de Voitures', ar: 'تأجير السيارات' }[lang]}
                 </p>
               </div>
@@ -116,7 +120,7 @@ export const Website: React.FC<WebsiteProps> = ({
                       : 'text-vel-muted hover:text-vel-slate'
                   }`}
                   style={{
-                    ...(currentPage === item.id ? { color: '#DC2626' } : {}),
+                    ...(currentPage === item.id ? { color: 'var(--color-gold)' } : {}),
                     fontFamily: 'var(--font-display)'
                   }}
                 >
@@ -125,7 +129,7 @@ export const Website: React.FC<WebsiteProps> = ({
                     <motion.div
                       layoutId="nav-underline"
                       className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-0.5 rounded-full"
-                      style={{ background: '#DC2626', boxShadow: '0 0 8px rgba(220,38,38,0.3)' }}
+                      style={{ background: 'var(--color-gold)', boxShadow: '0 0 10px var(--color-gold-glow)' }}
                     />
                   )}
                 </motion.button>
@@ -133,7 +137,13 @@ export const Website: React.FC<WebsiteProps> = ({
             </div>
 
             {/* Right side */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* Filtre de devise — tous les prix du site suivent ce choix */}
+              <CurrencySwitcher lang={lang} variant="nav" />
+
+              {/* Bascule clair / sombre */}
+              <ThemeToggle lang={lang} variant="pill" />
+
               {onLangChange && (
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -142,9 +152,9 @@ export const Website: React.FC<WebsiteProps> = ({
                   className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200"
                   style={{
                     fontFamily: 'var(--font-display)',
-                    color: '#DC2626',
-                    border: '1px solid rgba(220,38,38,0.25)',
-                    background: 'rgba(220,38,38,0.06)',
+                    color: 'var(--color-gold)',
+                    border: '1px solid var(--color-vel-border-gold)',
+                    background: 'var(--color-gold-soft)',
                   }}
                 >
                   {lang === 'fr' ? 'عربي' : 'FR'}
@@ -154,9 +164,9 @@ export const Website: React.FC<WebsiteProps> = ({
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 className="md:hidden p-2 rounded-lg text-vel-slate transition-all"
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#DC2626'; }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-gold)'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = ''; }}
-                style={{ background: isMobileMenuOpen ? 'rgba(15,23,42,0.04)' : 'transparent' }}
+                style={{ background: isMobileMenuOpen ? 'var(--color-surface-2)' : 'transparent' }}
               >
                 {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
               </motion.button>
@@ -179,7 +189,7 @@ export const Website: React.FC<WebsiteProps> = ({
                     currentPage === item.id ? '' : 'text-vel-muted hover:text-vel-slate'
                   }`}
                   style={{
-                    ...(currentPage === item.id ? { color: '#DC2626' } : {}),
+                    ...(currentPage === item.id ? { color: 'var(--color-gold)' } : {}),
                     fontFamily: 'var(--font-display)'
                   }}
                 >
@@ -239,7 +249,7 @@ export const Website: React.FC<WebsiteProps> = ({
       </motion.div>
 
       {/* ── FOOTER ── */}
-      <footer style={{ background: '#FFFFFF', borderTop: '1px solid rgba(15,23,42,0.08)' }}>
+      <footer style={{ background: 'var(--color-surface)', borderTop: '1px solid var(--color-border)' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
             {/* Brand */}
@@ -248,13 +258,13 @@ export const Website: React.FC<WebsiteProps> = ({
                 style={{ fontFamily: 'var(--font-display)' }}>
                 {SITE_NAME}
               </h3>
-              <div className="w-12 h-0.5 mb-4" style={{ background: '#DC2626', boxShadow: '0 0 8px rgba(220,38,38,0.35)' }} />
+              <div className="w-12 h-0.5 mb-4" style={{ background: 'var(--color-gold)', boxShadow: '0 0 10px var(--color-gold-glow)' }} />
               <p className="text-vel-muted text-sm leading-relaxed">{websiteSettings?.description}</p>
             </div>
 
             {/* Nav links */}
             <div>
-              <h4 className="font-bold text-xs tracking-[0.2em] uppercase mb-5" style={{ color: '#DC2626', fontFamily: 'var(--font-display)' }}>
+              <h4 className="font-bold text-xs tracking-[0.2em] uppercase mb-5" style={{ color: 'var(--color-gold)', fontFamily: 'var(--font-display)' }}>
                 {{ fr: 'Navigation', ar: 'الملاحة' }[lang]}
               </h4>
               <ul className="space-y-3">
@@ -263,7 +273,7 @@ export const Website: React.FC<WebsiteProps> = ({
                     <button
                       onClick={() => setCurrentPage(item.id as any)}
                       className="text-vel-muted text-sm transition-colors font-medium"
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#DC2626'; }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-gold)'; }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = ''; }}
                     >
                       {item.label[lang]}
@@ -275,23 +285,23 @@ export const Website: React.FC<WebsiteProps> = ({
 
             {/* Contact */}
             <div>
-              <h4 className="font-bold text-xs tracking-[0.2em] uppercase mb-5" style={{ color: '#DC2626', fontFamily: 'var(--font-display)' }}>
+              <h4 className="font-bold text-xs tracking-[0.2em] uppercase mb-5" style={{ color: 'var(--color-gold)', fontFamily: 'var(--font-display)' }}>
                 {{ fr: 'Contact', ar: 'اتصل' }[lang]}
               </h4>
               <ul className="space-y-3 text-vel-muted text-sm">
                 {contactInfo?.phone && (
                   <li className="flex items-center gap-2">
-                    <span style={{ color: '#DC2626' }}>→</span> {contactInfo.phone}
+                    <span style={{ color: 'var(--color-gold)' }}>→</span> {contactInfo.phone}
                   </li>
                 )}
                 {contactInfo?.email && (
                   <li className="flex items-center gap-2">
-                    <span style={{ color: '#DC2626' }}>→</span> {contactInfo.email}
+                    <span style={{ color: 'var(--color-gold)' }}>→</span> {contactInfo.email}
                   </li>
                 )}
                 {contactInfo?.address && (
                   <li className="flex items-center gap-2">
-                    <span style={{ color: '#DC2626' }}>→</span> {contactInfo.address}
+                    <span style={{ color: 'var(--color-gold)' }}>→</span> {contactInfo.address}
                   </li>
                 )}
               </ul>
@@ -299,14 +309,14 @@ export const Website: React.FC<WebsiteProps> = ({
 
             {/* Social */}
             <div>
-              <h4 className="font-bold text-xs tracking-[0.2em] uppercase mb-5" style={{ color: '#DC2626', fontFamily: 'var(--font-display)' }}>
+              <h4 className="font-bold text-xs tracking-[0.2em] uppercase mb-5" style={{ color: 'var(--color-gold)', fontFamily: 'var(--font-display)' }}>
                 {{ fr: 'Suivez-nous', ar: 'تابعنا' }[lang]}
               </h4>
               <div className="flex flex-wrap gap-3">
                 {contactInfo?.facebook && (
                   <a href={contactInfo.facebook} target="_blank" rel="noopener noreferrer"
                     className="w-10 h-10 vel-glass rounded-lg flex items-center justify-center text-vel-muted transition-all text-sm font-bold"
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#DC2626'; }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-gold)'; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = ''; }}>
                     f
                   </a>
@@ -334,13 +344,13 @@ export const Website: React.FC<WebsiteProps> = ({
           </div>
 
           <div className="mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4"
-            style={{ borderTop: '1px solid rgba(15,23,42,0.08)' }}>
+            style={{ borderTop: '1px solid var(--color-border)' }}>
             <p className="text-vel-dim text-sm">
               © {new Date().getFullYear()} {SITE_NAME}.{' '}
               <span className="text-vel-muted">{{ fr: 'Tous droits réservés.', ar: 'جميع الحقوق محفوظة.' }[lang]}</span>
             </p>
             <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#DC2626' }} />
+              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--color-gold)' }} />
               <span className="text-vel-dim text-xs tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
                 POWERED BY {SITE_NAME}
               </span>
@@ -349,5 +359,6 @@ export const Website: React.FC<WebsiteProps> = ({
         </div>
       </footer>
     </div>
+    </CurrencyProvider>
   );
 };

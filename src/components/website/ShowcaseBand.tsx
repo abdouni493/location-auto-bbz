@@ -35,7 +35,7 @@ export const ShowcaseBand: React.FC<ShowcaseBandProps> = ({ lang, onReserve, ima
     <section
       ref={sectionRef}
       className="relative overflow-hidden py-28 px-4 sm:px-6 lg:px-8"
-      style={{ background: '#F8FAFC' }}
+      style={{ background: 'var(--color-bg)' }}
     >
       {/* ── Couche visuelle d'arrière-plan (décorative, non interactive) ── */}
       <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
@@ -54,7 +54,7 @@ export const ShowcaseBand: React.FC<ShowcaseBandProps> = ({ lang, onReserve, ima
         ) : (
           // Pas d'image disponible : simple fond dégradé discret
           <div className="w-full h-full" style={{
-            background: 'radial-gradient(ellipse 70% 80% at 85% 50%, rgba(220,38,38,0.08), transparent 70%)',
+            background: 'radial-gradient(ellipse 70% 80% at 85% 50%, rgba(212,175,55,0.08), transparent 70%)',
           }} />
         )}
         {/* Dégradé clair pour la lisibilité du texte au-dessus (la voiture reste visible à droite) */}
@@ -76,7 +76,7 @@ export const ShowcaseBand: React.FC<ShowcaseBandProps> = ({ lang, onReserve, ima
           className="max-w-xl space-y-6"
         >
           <p className="font-bold text-xs tracking-[0.25em] uppercase"
-            style={{ color: '#DC2626', fontFamily: 'var(--font-display)' }}>
+            style={{ color: 'var(--color-gold)', fontFamily: 'var(--font-display)' }}>
             {{ fr: 'Prêt quand vous l\'êtes', ar: 'جاهزون عندما تكون جاهزًا' }[lang]}
           </p>
           <h2 className="font-black text-4xl sm:text-5xl text-vel-ink leading-tight"

@@ -96,7 +96,7 @@ export const StepAgencies: React.FC = () => {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className="text-sm text-vel-muted px-4 py-3 rounded-xl"
-                style={{ background: 'rgba(15,23,42,0.03)', border: '1px solid rgba(15,23,42,0.06)' }}
+                style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border-soft)' }}
               >
                 {lang === 'fr'
                   ? <>Le véhicule sera rendu au lieu de départ : <span className="font-bold text-vel-slate">{departureAgencyName}</span></>

@@ -10,7 +10,7 @@ import { SectionCard, SectionTitle, C } from './wizardUi';
  * Les services choisis s'ajoutent au total de l'étape 5.
  */
 export const StepServices: React.FC = () => {
-  const { lang, availableServices, loadingServices, selectedServices, toggleService } = useWizard();
+  const { lang, availableServices, loadingServices, selectedServices, toggleService, money } = useWizard();
 
   return (
     <div className="space-y-6">
@@ -32,6 +32,8 @@ export const StepServices: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {availableServices.map((service, i) => {
               const isSelected = selectedServices.some(s => s.id === service.id);
+              // Un service obligatoire est coché d'office et non décochable.
+              const isMandatory = service.isMandatory === true || service.is_mandatory === true;
               return (
                 <motion.div
                   key={service.id}
@@ -45,30 +47,43 @@ export const StepServices: React.FC = () => {
                     description: service.description,
                     category: service.category || 'service',
                     selected: false,
+                    isMandatory,
                   })}
-                  className="rounded-2xl p-5 cursor-pointer transition-all duration-300 relative overflow-hidden"
+                  className={`rounded-2xl p-5 transition-all duration-300 relative overflow-hidden ${
+                    isMandatory ? 'cursor-not-allowed' : 'cursor-pointer'
+                  }`}
                   style={{
-                    background: isSelected ? 'rgba(220,38,38,0.05)' : C.elevated,
-                    border: isSelected ? '1px solid rgba(220,38,38,0.25)' : '1px solid rgba(15,23,42,0.06)',
-                    boxShadow: isSelected ? '0 0 20px rgba(220,38,38,0.08)' : 'none',
+                    background: isSelected ? 'var(--color-gold-soft)' : C.elevated,
+                    border: isSelected ? '1px solid var(--color-vel-border-gold)' : '1px solid var(--color-border-soft)',
+                    boxShadow: isSelected ? '0 0 20px var(--color-gold-soft)' : 'none',
                   }}
+                  title={isMandatory
+                    ? (lang === 'fr' ? 'Service obligatoire — inclus automatiquement' : 'خدمة إلزامية — مُدرجة تلقائيًا')
+                    : undefined}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-black text-vel-ink text-sm" style={{ fontFamily: 'var(--font-display)' }}>
+                      <h4 className="font-black text-vel-ink text-sm flex items-center gap-2 flex-wrap"
+                        style={{ fontFamily: 'var(--font-display)' }}>
                         {service.name || service.service_name}
+                        {isMandatory && (
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide"
+                            style={{ background: 'var(--color-gold)', color: '#0A0A0B' }}>
+                            {{ fr: 'Obligatoire', ar: 'إلزامي' }[lang]}
+                          </span>
+                        )}
                       </h4>
                       {service.description && (
                         <p className="text-vel-muted text-xs mt-1 leading-relaxed">{service.description}</p>
                       )}
                       <p className="font-black text-base mt-2" style={{ color: C.accent }}>
-                        {service.price.toLocaleString()} {{ fr: 'DA', ar: 'د.ج' }[lang]}
+                        {money(service.price)}
                       </p>
                     </div>
                     <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300"
                       style={{
                         background: isSelected ? C.accent : 'transparent',
-                        border: isSelected ? `2px solid ${C.accent}` : '2px solid rgba(15,23,42,0.15)',
+                        border: isSelected ? `2px solid ${C.accent}` : '2px solid var(--color-border-soft)',
                       }}>
                       {isSelected && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
                     </div>
@@ -88,7 +103,7 @@ export const StepServices: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -16 }}
             className="rounded-2xl p-6 space-y-3"
-            style={{ background: 'rgba(220,38,38,0.05)', border: '1px solid rgba(220,38,38,0.16)' }}
+            style={{ background: 'var(--color-gold-soft)', border: '1px solid var(--color-vel-border-gold)' }}
           >
             <h4 className="font-black text-vel-ink" style={{ fontFamily: 'var(--font-display)' }}>
               🛒 {{ fr: 'Services sélectionnés', ar: 'الخدمات المختارة' }[lang]}
@@ -96,12 +111,12 @@ export const StepServices: React.FC = () => {
             {selectedServices.map(s => (
               <div key={s.id} className="flex justify-between items-center text-sm">
                 <span className="text-vel-slate">{s.name}</span>
-                <span className="font-bold" style={{ color: C.accent }}>{s.price.toLocaleString()} {{ fr: 'DA', ar: 'د.ج' }[lang]}</span>
+                <span className="font-bold" style={{ color: C.accent }}>{money(s.price)}</span>
               </div>
             ))}
-            <div className="pt-3 flex justify-between items-center font-black text-base" style={{ borderTop: '1px solid rgba(220,38,38,0.16)' }}>
+            <div className="pt-3 flex justify-between items-center font-black text-base" style={{ borderTop: '1px solid var(--color-vel-border-gold)' }}>
               <span className="text-vel-ink">{{ fr: 'Total services', ar: 'إجمالي الخدمات' }[lang]}</span>
-              <span style={{ color: C.accent }}>{selectedServices.reduce((s, x) => s + x.price, 0).toLocaleString()} {{ fr: 'DA', ar: 'د.ج' }[lang]}</span>
+              <span style={{ color: C.accent }}>{money(selectedServices.reduce((s, x) => s + x.price, 0))}</span>
             </div>
           </motion.div>
         )}

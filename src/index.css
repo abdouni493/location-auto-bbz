@@ -1,96 +1,523 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   MHD AUTO — SYSTÈME DE THÈME "OBSIDIAN GOLD"
+   ============================================================================
+   Fond noir + boutons or, avec un mode clair commutable.
+
+   Comment ça marche
+   -----------------
+   Tailwind v4 compile `bg-saas-bg` en `background-color: var(--color-saas-bg)`.
+   Les utilitaires pointent donc sur la variable, pas sur une valeur figée :
+   il suffit de redéfinir la variable sous `[data-theme="light"]` pour que TOUTE
+   l'application bascule, sans toucher aux 54 000 lignes de classes existantes.
+
+   Les anciens noms de tokens (`saas-*`, `vel-*`) sont volontairement conservés
+   — seules leurs VALEURS changent. Le mode sombre est le défaut.
+
+   `data-theme` est posé sur <html> par src/utils/theme.ts.
+   ============================================================================ */
+
 @theme {
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", "DM Sans", sans-serif;
 
-  /* === PALETTE "AUTOMOTIVE LIGHT" ===
-     Source de vérité : design-system/auto_location/MASTER.md
-     Primary ardoise #1E293B · CTA rouge #DC2626 · fond #F8FAFC · texte #0F172A.
-     Les noms vel-* historiques sont conservés (échelle de profondeur) mais
-     pointent désormais vers des valeurs CLAIRES. */
-  --color-vel-void:        #F8FAFC;  /* fond de page */
-  --color-vel-abyss:       #F1F5F9;  /* bandes / placeholders d'image */
-  --color-vel-deep:        #E8EDF4;  /* creux plus profonds */
-  --color-vel-surface:     #FFFFFF;  /* cartes */
-  --color-vel-elevated:    #FFFFFF;  /* cartes / champs */
+  /* ── Or de la marque ────────────────────────────────────────────────────── */
+  --color-gold:        #D4AF37;
+  --color-gold-light:  #F0CE5B;
+  --color-gold-dark:   #A88824;
+  --color-gold-deep:   #7A6118;
+  --color-gold-glow:   rgba(212, 175, 55, 0.28);
+  --color-gold-soft:   rgba(212, 175, 55, 0.10);
 
-  --color-vel-primary:     #1E293B;  /* ardoise premium (titres, nav) */
-  --color-vel-cta:         #DC2626;  /* rouge action (boutons, accents) */
+  /* ── Couleurs d'ACTION (une teinte par type de bouton) ──────────────────── */
+  --color-act-create:  #D4AF37;  /* or      — créer / valider (action primaire) */
+  --color-act-edit:    #3B82F6;  /* bleu    — modifier                          */
+  --color-act-delete:  #EF4444;  /* rouge   — supprimer                         */
+  --color-act-view:    #6366F1;  /* indigo  — consulter / détails               */
+  --color-act-success: #10B981;  /* émeraude— confirmer / activer               */
+  --color-act-warning: #F59E0B;  /* ambre   — alerte / maintenance              */
+  --color-act-print:   #8B5CF6;  /* violet  — imprimer / exporter               */
+  --color-act-payment: #14B8A6;  /* sarcelle— encaisser / paiement              */
+  --color-act-neutral: #64748B;  /* ardoise — annuler / secondaire              */
 
-  --color-vel-gold:        #B45309;  /* ambre lisible sur fond clair */
-  --color-vel-gold-light:  #D97706;
-  --color-vel-gold-dark:   #92400E;
-  --color-vel-gold-glow:   rgba(217, 119, 6, 0.12);
+  /* ── Socle du thème (valeurs du mode SOMBRE, par défaut) ────────────────── */
+  --color-bg:          #08080A;
+  --color-bg-alt:      #0E0E12;
+  --color-surface:     #131317;
+  --color-surface-2:   #1A1A20;
+  --color-surface-3:   #24242C;
+  --color-border:      rgba(212, 175, 55, 0.14);
+  --color-border-soft: rgba(255, 255, 255, 0.07);
+  --color-text:        #F4F4F5;
+  --color-text-soft:   #C9C9D1;
+  --color-text-muted:  #8B8B96;
+  --color-text-dim:    #63636E;
 
-  --color-vel-red:         #DC2626;
-  --color-vel-red-dark:    #B91C1C;
-  --color-vel-red-glow:    rgba(220, 38, 38, 0.12);
+  /* ── Tokens ADMIN (noms historiques `saas-*`) ───────────────────────────── */
+  --color-saas-bg:              #08080A;
+  --color-saas-surface:         #131317;
+  --color-saas-surface-2:       #1A1A20;
+  --color-saas-border:          rgba(212, 175, 55, 0.14);
+  --color-saas-text-main:       #F4F4F5;
+  --color-saas-text-muted:      #8B8B96;
 
-  /* Texte (ex vel-white/silver, renommés ink/slate) */
-  --color-vel-ink:         #0F172A;  /* texte principal */
-  --color-vel-slate:       #334155;  /* texte secondaire */
-  --color-vel-muted:       #64748B;  /* texte atténué */
-  --color-vel-dim:         #94A3B8;  /* texte discret */
+  --color-saas-primary-start:   #A88824;
+  --color-saas-primary-via:     #D4AF37;
+  --color-saas-primary-end:     #F0CE5B;
+  --color-saas-secondary-start: #4F46E5;
+  --color-saas-secondary-end:   #6366F1;
+  --color-saas-warning-start:   #F59E0B;
+  --color-saas-warning-end:     #EA580C;
+  --color-saas-success-start:   #10B981;
+  --color-saas-success-end:     #059669;
+  --color-saas-danger-start:    #EF4444;
+  --color-saas-danger-end:      #DC2626;
+
+  /* ── Tokens SITE PUBLIC (noms historiques `vel-*`) ──────────────────────── */
+  --color-vel-void:        #08080A;
+  --color-vel-abyss:       #0E0E12;
+  --color-vel-deep:        #131317;
+  --color-vel-surface:     #131317;
+  --color-vel-elevated:    #1A1A20;
+
+  --color-vel-primary:     #F4F4F5;
+  --color-vel-cta:         #D4AF37;
+
+  --color-vel-gold:        #D4AF37;
+  --color-vel-gold-light:  #F0CE5B;
+  --color-vel-gold-dark:   #A88824;
+  --color-vel-gold-glow:   rgba(212, 175, 55, 0.28);
+
+  --color-vel-red:         #EF4444;
+  --color-vel-red-dark:    #DC2626;
+  --color-vel-red-glow:    rgba(239, 68, 68, 0.22);
+
+  --color-vel-ink:         #F4F4F5;
+  --color-vel-slate:       #C9C9D1;
+  --color-vel-muted:       #8B8B96;
+  --color-vel-dim:         #63636E;
+
+  --color-vel-glass:       #131317;
+  --color-vel-glass-gold:  rgba(212, 175, 55, 0.08);
+  --color-vel-border:      rgba(212, 175, 55, 0.14);
+  --color-vel-border-gold: rgba(212, 175, 55, 0.35);
+
+  /* ── Ombres & rayons ────────────────────────────────────────────────────── */
+  --shadow-soft:  0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lift:  0 12px 36px rgba(0, 0, 0, 0.5);
+  --shadow-gold:  0 6px 22px rgba(212, 175, 55, 0.28);
+
+  /* ── Durées d'animation (respectent prefers-reduced-motion, voir plus bas) ── */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ============================================================================
+   MODE CLAIR — mêmes variables, valeurs claires.
+   Poser `data-theme="light"` sur <html> suffit à basculer toute l'app.
+   ============================================================================ */
+:root[data-theme="light"] {
+  --color-bg:          #F7F7F9;
+  --color-bg-alt:      #FFFFFF;
+  --color-surface:     #FFFFFF;
+  --color-surface-2:   #F4F4F6;
+  --color-surface-3:   #E9E9EE;
+  --color-border:      rgba(15, 23, 42, 0.10);
+  --color-border-soft: rgba(15, 23, 42, 0.06);
+  --color-text:        #101014;
+  --color-text-soft:   #33333D;
+  --color-text-muted:  #6B6B76;
+  --color-text-dim:    #9A9AA4;
+
+  /* L'or reste la couleur de marque, mais assombri pour rester lisible
+     sur fond clair (contraste AA sur blanc). */
+  --color-gold:        #A6801A;
+  --color-gold-light:  #C9A227;
+  --color-gold-dark:   #7A6118;
+  --color-gold-glow:   rgba(166, 128, 26, 0.18);
+  --color-gold-soft:   rgba(166, 128, 26, 0.08);
+
+  --color-act-create:  #A6801A;
+  --color-act-edit:    #2563EB;
+  --color-act-delete:  #DC2626;
+  --color-act-view:    #4F46E5;
+  --color-act-success: #059669;
+  --color-act-warning: #D97706;
+  --color-act-print:   #7C3AED;
+  --color-act-payment: #0D9488;
+  --color-act-neutral: #64748B;
+
+  --color-saas-bg:              #F7F7F9;
+  --color-saas-surface:         #FFFFFF;
+  --color-saas-surface-2:       #F4F4F6;
+  --color-saas-border:          rgba(15, 23, 42, 0.10);
+  --color-saas-text-main:       #101014;
+  --color-saas-text-muted:      #6B6B76;
+
+  --color-saas-primary-start:   #7A6118;
+  --color-saas-primary-via:     #A6801A;
+  --color-saas-primary-end:     #C9A227;
+
+  --color-vel-void:        #F7F7F9;
+  --color-vel-abyss:       #F0F0F3;
+  --color-vel-deep:        #E9E9EE;
+  --color-vel-surface:     #FFFFFF;
+  --color-vel-elevated:    #FFFFFF;
+
+  --color-vel-primary:     #101014;
+  --color-vel-cta:         #A6801A;
+
+  --color-vel-gold:        #A6801A;
+  --color-vel-gold-light:  #C9A227;
+  --color-vel-gold-dark:   #7A6118;
+  --color-vel-gold-glow:   rgba(166, 128, 26, 0.18);
+
+  --color-vel-ink:         #101014;
+  --color-vel-slate:       #33333D;
+  --color-vel-muted:       #6B6B76;
+  --color-vel-dim:         #9A9AA4;
 
   --color-vel-glass:       #FFFFFF;
-  --color-vel-glass-gold:  rgba(217, 119, 6, 0.08);
-  --color-vel-border:      rgba(15, 23, 42, 0.08);
-  --color-vel-border-gold: rgba(217, 119, 6, 0.3);
+  --color-vel-glass-gold:  rgba(166, 128, 26, 0.07);
+  --color-vel-border:      rgba(15, 23, 42, 0.10);
+  --color-vel-border-gold: rgba(166, 128, 26, 0.30);
 
-  /* Legacy saas vars kept for admin compatibility */
-  --color-saas-primary-start:   #1e3a8a;
-  --color-saas-primary-via:     #1d4ed8;
-  --color-saas-primary-end:     #0891b2;
-  --color-saas-secondary-start: #475569;
-  --color-saas-secondary-end:   #4f46e5;
-  --color-saas-warning-start:   #f59e0b;
-  --color-saas-warning-end:     #ea580c;
-  --color-saas-success-start:   #10b981;
-  --color-saas-success-end:     #0d9488;
-  --color-saas-danger-start:    #ef4444;
-  --color-saas-danger-end:      #e11d48;
-  --color-saas-bg:              #f8fafc;
-  --color-saas-surface:         #ffffff;
-  --color-saas-border:          #e2e8f0;
-  --color-saas-text-main:       #0f172a;
-  --color-saas-text-muted:      #64748b;
+  --shadow-soft:  0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.05);
+  --shadow-lift:  0 12px 32px rgba(15, 23, 42, 0.10);
+  --shadow-gold:  0 6px 20px rgba(166, 128, 26, 0.22);
 }
 
 /* ── Global ── */
+html {
+  background: var(--color-bg);
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
+
 body {
-  @apply bg-vel-void text-vel-ink antialiased;
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
   font-family: var(--font-sans);
+  transition: background-color 0.3s var(--ease-out-soft), color 0.3s var(--ease-out-soft);
 }
 
 .font-display { font-family: var(--font-display); }
 
-/* ── Carte claire (ex "glass" sombre) ── */
+/* ============================================================================
+   COUCHE DE COMPATIBILITÉ
+   ----------------------------------------------------------------------------
+   Le code existant utilise beaucoup de classes Tailwind à valeur FIXE
+   (`bg-white`, `bg-gray-50`, `text-gray-900`…) qui, elles, ne suivent pas les
+   variables de thème. On les redirige ici vers les tokens, uniquement en mode
+   sombre, pour éviter les aplats blancs sur fond noir.
+
+   `text-white` n'est PAS redéfini : il reste du vrai blanc (texte sur bouton or).
+   ============================================================================ */
+:root:not([data-theme="light"]) {
+  /* Fonds clairs → surfaces sombres */
+  .bg-white          { background-color: var(--color-surface) !important; }
+  .bg-gray-50,  .bg-slate-50,  .bg-zinc-50,  .bg-neutral-50,
+  .bg-gray-100, .bg-slate-100, .bg-zinc-100, .bg-neutral-100 {
+    background-color: var(--color-surface-2) !important;
+  }
+  .bg-gray-200, .bg-slate-200, .bg-zinc-200, .bg-neutral-200 {
+    background-color: var(--color-surface-3) !important;
+  }
+
+  /* Textes sombres → textes clairs */
+  .text-black,
+  .text-gray-900, .text-slate-900, .text-zinc-900, .text-neutral-900,
+  .text-gray-800, .text-slate-800, .text-zinc-800, .text-neutral-800 {
+    color: var(--color-text) !important;
+  }
+  .text-gray-700, .text-slate-700, .text-zinc-700, .text-neutral-700,
+  .text-gray-600, .text-slate-600, .text-zinc-600, .text-neutral-600 {
+    color: var(--color-text-soft) !important;
+  }
+  .text-gray-500, .text-slate-500, .text-zinc-500, .text-neutral-500,
+  .text-gray-400, .text-slate-400, .text-zinc-400, .text-neutral-400 {
+    color: var(--color-text-muted) !important;
+  }
+
+  /* Bordures claires → bordures sombres */
+  .border-white,
+  .border-gray-100, .border-slate-100, .border-zinc-100, .border-neutral-100,
+  .border-gray-200, .border-slate-200, .border-zinc-200, .border-neutral-200,
+  .border-gray-300, .border-slate-300, .border-zinc-300, .border-neutral-300 {
+    border-color: var(--color-border-soft) !important;
+  }
+
+  /* Champs de formulaire natifs */
+  input, textarea, select { color-scheme: dark; }
+
+  /* Les vignettes de couleur claire des badges restent lisibles */
+  .divide-gray-200 > * + *, .divide-slate-200 > * + * {
+    border-color: var(--color-border-soft) !important;
+  }
+}
+
+/* ============================================================================
+   CARTES & SURFACES
+   ============================================================================ */
+.glass-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-soft);
+  transition: transform 0.25s var(--ease-out-soft),
+              box-shadow 0.25s var(--ease-out-soft),
+              border-color 0.25s var(--ease-out-soft);
+}
+.glass-card:hover {
+  border-color: color-mix(in srgb, var(--color-gold) 32%, transparent);
+  box-shadow: var(--shadow-lift);
+}
+
+/* Carte "premium" : liseré or au survol */
+.card-gold {
+  background: linear-gradient(160deg, var(--color-surface), var(--color-surface-2));
+  border: 1px solid var(--color-border);
+  border-radius: 1.25rem;
+  box-shadow: var(--shadow-soft);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s var(--ease-out-soft), box-shadow 0.3s var(--ease-out-soft);
+}
+.card-gold::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+  opacity: 0;
+  transition: opacity 0.3s var(--ease-out-soft);
+}
+.card-gold:hover { transform: translateY(-3px); box-shadow: var(--shadow-lift); }
+.card-gold:hover::before { opacity: 1; }
+
 .vel-glass {
   background: var(--color-vel-surface);
   border: 1px solid var(--color-vel-border);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.04);
+  box-shadow: var(--shadow-soft);
 }
-
 .vel-glass-gold {
   background: var(--color-vel-glass-gold);
   border: 1px solid var(--color-vel-border-gold);
 }
-
-/* ── Encart accent (ex glass-cyan) ── */
 .vel-glass-accent {
-  background: rgba(220, 38, 38, 0.04);
-  border: 1px solid rgba(220, 38, 38, 0.14);
+  background: var(--color-gold-soft);
+  border: 1px solid var(--color-vel-border-gold);
 }
 
-/* ── Bouton CTA principal (rouge action) ── */
-.btn-vel-cta {
+/* ============================================================================
+   BOUTONS — une couleur par type d'action
+   ============================================================================ */
+/* Socle commun à tous les boutons — écrit en CSS nu, car Tailwind v4 ne sait
+   pas `@apply` une classe de composant définie dans la même feuille. */
+.btn-base,
+.btn-saas-primary, .btn-saas-secondary, .btn-saas-danger,
+.btn-saas-success, .btn-saas-warning, .btn-saas-outline,
+.btn-act-edit, .btn-act-delete, .btn-act-success, .btn-act-warning,
+.btn-act-view, .btn-act-print, .btn-act-payment, .btn-act-neutral {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  transition: transform 0.18s var(--ease-out-soft),
+              box-shadow 0.22s var(--ease-out-soft),
+              filter 0.18s var(--ease-out-soft);
+}
+.btn-base:hover,
+.btn-saas-primary:hover, .btn-saas-secondary:hover, .btn-saas-danger:hover,
+.btn-saas-success:hover, .btn-saas-warning:hover,
+.btn-act-edit:hover, .btn-act-delete:hover, .btn-act-success:hover,
+.btn-act-warning:hover, .btn-act-view:hover, .btn-act-print:hover,
+.btn-act-payment:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+}
+.btn-base:active,
+.btn-saas-primary:active, .btn-saas-secondary:active, .btn-saas-danger:active,
+.btn-saas-success:active, .btn-saas-warning:active, .btn-saas-outline:active,
+.btn-act-edit:active, .btn-act-delete:active, .btn-act-success:active,
+.btn-act-warning:active, .btn-act-view:active, .btn-act-print:active,
+.btn-act-payment:active, .btn-act-neutral:active {
+  transform: translateY(0) scale(0.97);
+}
+.btn-base:focus-visible,
+.btn-saas-primary:focus-visible, .btn-saas-secondary:focus-visible,
+.btn-saas-danger:focus-visible, .btn-saas-success:focus-visible,
+.btn-saas-warning:focus-visible, .btn-saas-outline:focus-visible,
+.btn-act-edit:focus-visible, .btn-act-delete:focus-visible,
+.btn-act-success:focus-visible, .btn-act-warning:focus-visible,
+.btn-act-view:focus-visible, .btn-act-print:focus-visible,
+.btn-act-payment:focus-visible, .btn-act-neutral:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+.btn-base:disabled,
+.btn-saas-primary:disabled, .btn-saas-secondary:disabled, .btn-saas-danger:disabled,
+.btn-saas-success:disabled, .btn-saas-warning:disabled, .btn-saas-outline:disabled,
+.btn-act-edit:disabled, .btn-act-delete:disabled, .btn-act-success:disabled,
+.btn-act-warning:disabled, .btn-act-view:disabled, .btn-act-print:disabled,
+.btn-act-payment:disabled, .btn-act-neutral:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+
+/* Action primaire : OR */
+.btn-saas-primary {
+  color: #0A0A0B;
+  background: linear-gradient(135deg, var(--color-gold-light), var(--color-gold));
+  box-shadow: var(--shadow-gold);
+}
+.btn-saas-primary:hover { box-shadow: 0 10px 30px var(--color-gold-glow); }
+
+/* Modifier : BLEU */
+.btn-saas-secondary,
+.btn-act-edit {
+  color: #fff;
+  background: linear-gradient(135deg, #60A5FA, var(--color-act-edit));
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.32);
+}
+
+/* Supprimer : ROUGE */
+.btn-saas-danger,
+.btn-act-delete {
+  color: #fff;
+  background: linear-gradient(135deg, #F87171, var(--color-act-delete));
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.32);
+}
+
+/* Succès / activer : ÉMERAUDE */
+.btn-saas-success,
+.btn-act-success {
+  color: #fff;
+  background: linear-gradient(135deg, #34D399, var(--color-act-success));
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.32);
+}
+
+/* Avertissement : AMBRE */
+.btn-saas-warning,
+.btn-act-warning {
+  color: #0A0A0B;
+  background: linear-gradient(135deg, #FBBF24, var(--color-act-warning));
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.32);
+}
+
+/* Consulter : INDIGO */
+.btn-act-view {
+  color: #fff;
+  background: linear-gradient(135deg, #818CF8, var(--color-act-view));
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.32);
+}
+
+/* Imprimer : VIOLET */
+.btn-act-print {
+  color: #fff;
+  background: linear-gradient(135deg, #A78BFA, var(--color-act-print));
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.32);
+}
+
+/* Paiement : SARCELLE */
+.btn-act-payment {
+  color: #fff;
+  background: linear-gradient(135deg, #2DD4BF, var(--color-act-payment));
+  box-shadow: 0 4px 16px rgba(20, 184, 166, 0.32);
+}
+
+/* Secondaire / annuler : contour neutre */
+.btn-saas-outline,
+.btn-act-neutral {
+  background: transparent;
+  color: var(--color-text-soft);
+  border-color: var(--color-border-soft);
+  box-shadow: none;
+}
+.btn-saas-outline:hover,
+.btn-act-neutral:hover {
+  border-color: color-mix(in srgb, var(--color-gold) 45%, transparent);
+  color: var(--color-gold);
+  background: var(--color-gold-soft);
+}
+
+/* Bouton icône compact (barres d'actions des cartes) */
+.btn-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  cursor: pointer;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border-soft);
+  color: var(--color-text-muted);
+  transition: all 0.18s var(--ease-out-soft);
+}
+.btn-icon:hover { transform: translateY(-2px) scale(1.05); }
+.btn-icon:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+.btn-icon-edit:hover    { color: #fff; background: var(--color-act-edit);    border-color: transparent; }
+.btn-icon-delete:hover  { color: #fff; background: var(--color-act-delete);  border-color: transparent; }
+.btn-icon-view:hover    { color: #fff; background: var(--color-act-view);    border-color: transparent; }
+.btn-icon-print:hover   { color: #fff; background: var(--color-act-print);   border-color: transparent; }
+.btn-icon-payment:hover { color: #fff; background: var(--color-act-payment); border-color: transparent; }
+.btn-icon-gold:hover    { color: #0A0A0B; background: var(--color-gold);     border-color: transparent; }
+
+/* ── Champs de formulaire ── */
+.input-saas {
+  width: 100%;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1rem;
+  outline: none;
+  font-weight: 500;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border-soft);
+  color: var(--color-text);
+  transition: border-color 0.2s var(--ease-out-soft),
+              box-shadow 0.2s var(--ease-out-soft),
+              background-color 0.2s var(--ease-out-soft);
+}
+.input-saas::placeholder { color: var(--color-text-dim); }
+.input-saas:focus {
+  border-color: var(--color-gold);
+  box-shadow: 0 0 0 3px var(--color-gold-soft);
+  background: var(--color-surface);
+}
+.input-saas:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.label-saas {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.375rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Boutons du site public (noms historiques) ── */
+.btn-vel-cta,
+.btn-vel-gold {
   font-family: var(--font-display);
   font-weight: 700;
   letter-spacing: 0.05em;
-  color: #FFFFFF;
+  color: #0A0A0B;
   border-radius: 0.75rem;
-  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -98,204 +525,189 @@ body {
   position: relative;
   overflow: hidden;
   cursor: pointer;
-  background: linear-gradient(135deg, #DC2626, #B91C1C);
-  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.25);
+  background: linear-gradient(135deg, var(--color-gold-light), var(--color-gold));
+  box-shadow: var(--shadow-gold);
+  transition: transform 0.2s var(--ease-out-soft), box-shadow 0.2s var(--ease-out-soft);
 }
-.btn-vel-cta:hover {
-  box-shadow: 0 8px 22px rgba(220, 38, 38, 0.32);
+.btn-vel-cta:hover,
+.btn-vel-gold:hover {
+  box-shadow: 0 10px 30px var(--color-gold-glow);
   transform: translateY(-2px);
 }
-.btn-vel-cta:active { transform: scale(0.97); }
-.btn-vel-cta:focus-visible { outline: 2px solid #B91C1C; outline-offset: 2px; }
+.btn-vel-cta:active, .btn-vel-gold:active { transform: scale(0.97); }
+.btn-vel-cta:focus-visible { outline: 2px solid var(--color-gold-light); outline-offset: 2px; }
 
-/* ── Bouton contour ── */
+.btn-vel-red {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #fff;
+  border-radius: 0.75rem;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  cursor: pointer;
+  background: linear-gradient(135deg, #F87171, var(--color-act-delete));
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+  transition: all 0.2s var(--ease-out-soft);
+}
+.btn-vel-red:hover { transform: translateY(-2px); }
+
+.btn-vel-ghost,
 .btn-vel-outline-cyan {
   font-family: var(--font-display);
   font-weight: 700;
   letter-spacing: 0.05em;
-  color: #334155;
+  color: var(--color-vel-slate);
   border-radius: 0.75rem;
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
   cursor: pointer;
-  background: #FFFFFF;
-  border: 1px solid rgba(15, 23, 42, 0.14);
-}
-.btn-vel-outline-cyan:hover {
-  border-color: rgba(220, 38, 38, 0.4);
-  color: #DC2626;
-  background: rgba(220, 38, 38, 0.04);
-}
-.btn-vel-outline-cyan:active { transform: scale(0.97); }
-
-/* ── Anciennes classes "glow" neutralisées (pas de néon en mode clair) ── */
-.text-glow-cyan, .text-glow-violet, .text-glow-gold, .text-glow-red { text-shadow: none; }
-
-/* ── Bouton ambre ── */
-.btn-vel-gold {
-  @apply relative overflow-hidden font-display font-bold tracking-wider
-         text-white px-8 py-4 rounded-xl transition-all duration-200
-         active:scale-95 flex items-center justify-center gap-2 cursor-pointer;
-  background: linear-gradient(135deg, #D97706, #B45309);
-  box-shadow: 0 4px 14px rgba(217, 119, 6, 0.25);
-}
-.btn-vel-gold:hover {
-  box-shadow: 0 8px 22px rgba(217, 119, 6, 0.32);
-  transform: translateY(-2px);
-}
-
-/* ── Bouton rouge (identique au CTA, conservé pour compat) ── */
-.btn-vel-red {
-  @apply relative overflow-hidden font-display font-bold tracking-wider
-         text-white px-8 py-4 rounded-xl transition-all duration-200
-         active:scale-95 flex items-center justify-center gap-2 cursor-pointer;
-  background: linear-gradient(135deg, #DC2626, #B91C1C);
-  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.25);
-}
-.btn-vel-red:hover {
-  box-shadow: 0 8px 22px rgba(220, 38, 38, 0.32);
-  transform: translateY(-2px);
-}
-
-/* ── Bouton fantôme ── */
-.btn-vel-ghost {
-  @apply relative overflow-hidden font-display font-bold tracking-wider
-         text-vel-slate px-8 py-4 rounded-xl transition-all duration-200
-         active:scale-95 flex items-center justify-center gap-2 cursor-pointer;
-  background: #FFFFFF;
+  background: transparent;
   border: 1px solid var(--color-vel-border);
+  transition: all 0.2s var(--ease-out-soft);
 }
-.btn-vel-ghost:hover {
-  border-color: rgba(220, 38, 38, 0.35);
-  color: var(--color-vel-cta);
-  background: rgba(220, 38, 38, 0.03);
+.btn-vel-ghost:hover,
+.btn-vel-outline-cyan:hover {
+  border-color: var(--color-vel-border-gold);
+  color: var(--color-gold);
+  background: var(--color-gold-soft);
 }
+.btn-vel-ghost:active, .btn-vel-outline-cyan:active { transform: scale(0.97); }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #F1F5F9; }
-::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+/* Lueur dorée sur les titres du site public (mode sombre uniquement) */
+.text-glow-gold { text-shadow: 0 0 24px var(--color-gold-glow); }
+.text-glow-cyan, .text-glow-violet, .text-glow-red { text-shadow: none; }
+:root[data-theme="light"] .text-glow-gold { text-shadow: none; }
 
-/* ── RTL Support ── */
-[dir="rtl"] { font-family: 'Noto Sans Arabic', sans-serif; }
-
-/* ── Admin area: keep white bg ── */
+/* ── Zone admin ── */
 .admin-surface {
   background: var(--color-saas-bg) !important;
   color: var(--color-saas-text-main) !important;
 }
 
-/* ── Existing admin button classes ── */
-@layer components {
-  .btn-saas-primary {
-    @apply relative overflow-hidden rounded-xl px-6 py-3 font-semibold transition-all duration-300
-           text-white shadow-md active:scale-95 flex items-center justify-center gap-2
-           hover:shadow-xl hover:scale-[1.03] hover:-translate-y-0.5
-           bg-linear-to-r from-saas-primary-start via-saas-primary-via to-saas-primary-end;
-  }
-  .btn-saas-secondary {
-    @apply relative overflow-hidden rounded-xl px-6 py-3 font-semibold transition-all duration-300
-           text-white shadow-md active:scale-95 flex items-center justify-center gap-2
-           hover:shadow-xl hover:scale-[1.03] hover:-translate-y-0.5
-           bg-linear-to-r from-saas-secondary-start to-saas-secondary-end;
-  }
-  .btn-saas-warning {
-    @apply relative overflow-hidden rounded-xl px-6 py-3 font-semibold transition-all duration-300
-           text-white shadow-md active:scale-95 flex items-center justify-center gap-2
-           hover:shadow-xl hover:scale-[1.03] hover:-translate-y-0.5
-           bg-linear-to-r from-saas-warning-start to-saas-warning-end;
-  }
-  .btn-saas-success {
-    @apply relative overflow-hidden rounded-xl px-6 py-3 font-semibold transition-all duration-300
-           text-white shadow-md active:scale-95 flex items-center justify-center gap-2
-           hover:shadow-xl hover:scale-[1.03] hover:-translate-y-0.5
-           bg-linear-to-r from-saas-success-start to-saas-success-end;
-  }
-  .btn-saas-danger {
-    @apply relative overflow-hidden rounded-xl px-6 py-3 font-semibold transition-all duration-300
-           text-white shadow-md active:scale-95 flex items-center justify-center gap-2
-           hover:shadow-xl hover:scale-[1.03] hover:-translate-y-0.5
-           bg-linear-to-r from-saas-danger-start to-saas-danger-end;
-  }
-  .btn-saas-danger:hover { animation: shake 0.2s ease-in-out infinite; }
-  .btn-saas-outline {
-    @apply relative overflow-hidden rounded-xl px-6 py-3 font-semibold transition-all duration-300
-           bg-transparent text-saas-text-main border border-saas-border
-           hover:border-saas-primary-via hover:bg-saas-bg active:scale-95;
-  }
-  .glass-card {
-    @apply bg-white border border-saas-border rounded-2xl shadow-sm hover:shadow-md transition-shadow;
-  }
-  .input-saas {
-    @apply w-full bg-white border border-saas-border rounded-xl px-4 py-2.5 outline-none
-           focus:ring-2 focus:ring-saas-primary-via/10 focus:border-saas-primary-via transition-all duration-200
-           text-saas-text-main font-medium placeholder:text-saas-text-muted;
-  }
-  .label-saas {
-    @apply text-xs font-semibold text-saas-text-muted mb-1.5 block;
-  }
-}
-
+/* ============================================================================
+   ANIMATIONS
+   ============================================================================ */
 @keyframes shake {
-  0%, 100% { transform: translateX(0) scale(1.03); }
-  25% { transform: translateX(-2px) scale(1.03); }
-  75% { transform: translateX(2px) scale(1.03); }
+  0%, 100% { transform: translateX(0) scale(1.02); }
+  25% { transform: translateX(-2px) scale(1.02); }
+  75% { transform: translateX(2px) scale(1.02); }
+}
+.animate-shake { animation: shake 0.2s ease-in-out infinite; }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fade-up 0.45s var(--ease-out-soft) both; }
+
+@keyframes gold-sweep {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+/* Squelette de chargement */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-2) 25%,
+    var(--color-surface-3) 50%,
+    var(--color-surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: gold-sweep 1.4s linear infinite;
+  border-radius: 0.5rem;
 }
 
-.animate-shake { animation: shake 0.2s ease-in-out infinite; }
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 0 var(--color-gold-glow); }
+  50%      { box-shadow: 0 0 0 10px transparent; }
+}
+.animate-pulse-gold { animation: pulse-gold 2s var(--ease-out-soft) infinite; }
+
+/* Échelonnement d'apparition pour les grilles de cartes */
+.stagger-children > * { animation: fade-up 0.4s var(--ease-out-soft) both; }
+.stagger-children > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.10s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.14s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.18s; }
+.stagger-children > *:nth-child(6) { animation-delay: 0.22s; }
+.stagger-children > *:nth-child(7) { animation-delay: 0.26s; }
+.stagger-children > *:nth-child(8) { animation-delay: 0.30s; }
+
+/* Accessibilité : on coupe tout mouvement non essentiel si l'OS le demande. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================================
+   BARRES DE DÉFILEMENT
+   ============================================================================ */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--color-bg-alt); }
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-3);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-gold-dark); }
 
 .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #CBD5E1; }
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-surface-3);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--color-gold-dark); }
 
-/* ── Calendrier du wizard de réservation (react-day-picker, thème clair) ── */
+/* ── Support RTL ── */
+[dir="rtl"] { font-family: 'Noto Sans Arabic', sans-serif; }
+
+/* ============================================================================
+   CALENDRIER DU WIZARD (react-day-picker) — accordé au thème
+   ============================================================================ */
 .wizard-calendar .rdp-root {
-  --rdp-accent-color: #DC2626;
-  --rdp-accent-background-color: rgba(220, 38, 38, 0.10);
+  --rdp-accent-color: var(--color-gold);
+  --rdp-accent-background-color: var(--color-gold-soft);
   --rdp-day-height: 42px;
   --rdp-day-width: 42px;
   --rdp-day_button-border-radius: 10px;
-  --rdp-today-color: #DC2626;
-  --rdp-selected-border: 2px solid #DC2626;
-  --rdp-range_start-color: #FFFFFF;
-  --rdp-range_end-color: #FFFFFF;
-  --rdp-range_start-background: linear-gradient(135deg, #DC2626, #B91C1C);
-  --rdp-range_end-background: linear-gradient(135deg, #DC2626, #B91C1C);
-  color: #334155;
+  --rdp-today-color: var(--color-gold);
+  --rdp-selected-border: 2px solid var(--color-gold);
+  --rdp-range_start-color: #0A0A0B;
+  --rdp-range_end-color: #0A0A0B;
+  --rdp-range_start-background: linear-gradient(135deg, var(--color-gold-light), var(--color-gold));
+  --rdp-range_end-background: linear-gradient(135deg, var(--color-gold-light), var(--color-gold));
+  color: var(--color-text-soft);
   font-family: var(--font-sans);
 }
 .wizard-calendar .rdp-month_caption,
 .wizard-calendar .rdp-caption_label {
-  color: #0F172A;
+  color: var(--color-text);
   font-family: var(--font-display);
   font-weight: 700;
 }
-.wizard-calendar .rdp-weekday { color: #94A3B8; font-size: 11px; }
-.wizard-calendar .rdp-chevron { fill: #DC2626; }
+.wizard-calendar .rdp-weekday { color: var(--color-text-dim); font-size: 11px; }
+.wizard-calendar .rdp-chevron { fill: var(--color-gold); }
 .wizard-calendar .rdp-day_button { cursor: pointer; transition: background 0.15s ease; }
 .wizard-calendar .rdp-day:not(.rdp-disabled) .rdp-day_button:hover {
-  background: rgba(220, 38, 38, 0.08);
+  background: var(--color-gold-soft);
 }
-.wizard-calendar .rdp-disabled { opacity: 0.4; }
+.wizard-calendar .rdp-disabled { opacity: 0.35; }
 .wizard-calendar .rdp-disabled .rdp-day_button { cursor: not-allowed; text-decoration: line-through; }
+
 /* Jours déjà réservés : rouge, distinct du simple passé */
 .wizard-calendar .wizard-day-blocked { opacity: 1; }
 .wizard-calendar .wizard-day-blocked .rdp-day_button {
-  background: rgba(220, 38, 38, 0.10);
-  color: rgba(185, 28, 28, 0.75);
+  background: rgba(239, 68, 68, 0.14);
+  color: rgba(248, 113, 113, 0.9);
   text-decoration: line-through;
   cursor: not-allowed;
 }
 /* Plage survolée entre le 1er et le 2e clic */
 .wizard-calendar .wizard-day-preview:not(.rdp-selected):not(.wizard-day-blocked) .rdp-day_button {
-  background: rgba(220, 38, 38, 0.07);
+  background: var(--color-gold-soft);
   border-radius: 0;
-}
-@media (prefers-reduced-motion: reduce) {
-  .wizard-calendar .rdp-day_button { transition: none; }
 }

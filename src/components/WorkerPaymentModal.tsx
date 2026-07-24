@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Worker, Language, WorkerPayment } from '../types';
 import { motion } from 'motion/react';
-import { X } from 'lucide-react';
+import { X, Wallet, CreditCard, CalendarX, Pencil, RotateCcw, Loader2 } from 'lucide-react';
 
 interface WorkerPaymentModalProps {
   isOpen: boolean;
@@ -11,147 +11,267 @@ interface WorkerPaymentModalProps {
   onCreatePayment?: (payment: WorkerPayment) => Promise<void>;
 }
 
-export const WorkerPaymentModal: React.FC<WorkerPaymentModalProps> = ({ isOpen, onClose, worker, lang, onCreatePayment }) => {
+const money = (n: number) => `${Math.round(Number(n) || 0).toLocaleString('fr-FR')} DA`;
+const fmtDate = (d?: string) => {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleDateString('fr-FR'); } catch { return d; }
+};
+
+/**
+ * Calcul du paiement d'un employé.
+ *
+ * Ne prennent part au calcul que les acomptes et absences NON ENCORE SOLDÉS
+ * (`settled !== true`) : une fois déduits d'un paiement, ils disparaissent des
+ * en-cours et ne sont donc jamais décomptés deux fois.
+ *
+ * Le net calculé peut être remplacé à la main, la date est modifiable, et la
+ * description reste facultative.
+ */
+export const WorkerPaymentModal: React.FC<WorkerPaymentModalProps> = ({
+  isOpen, onClose, worker, lang, onCreatePayment,
+}) => {
+  const isFr = lang === 'fr';
+  const T = (fr: string, ar: string) => (isFr ? fr : ar);
+
+  // Seuls les mouvements encore dus.
+  const pendingAdvances = useMemo(
+    () => (worker.advances || []).filter(a => a.settled !== true),
+    [worker.advances]
+  );
+  const pendingAbsences = useMemo(
+    () => (worker.absences || []).filter(a => a.settled !== true),
+    [worker.absences]
+  );
+
+  const totalAdvances = pendingAdvances.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+  const totalAbsences = pendingAbsences.reduce((s, a) => s + (Number(a.cost) || 0), 0);
+  const base = Number(worker.baseSalary) || 0;
+  const netSalary = base - totalAdvances - totalAbsences;
+
+  const [manualAmount, setManualAmount] = useState<number | ''>('');
+  const [isManual, setIsManual] = useState(false);
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+
   if (!isOpen) return null;
 
-  const totalAdvances = worker.advances.reduce((sum, a) => sum + a.amount, 0);
-  const totalAbsences = worker.absences.reduce((sum, a) => sum + a.cost, 0);
-  const netSalary = worker.baseSalary - totalAdvances - totalAbsences;
+  const finalAmount = isManual && manualAmount !== '' ? Number(manualAmount) : netSalary;
 
   const handleCreatePayment = async () => {
-    const newPayment: WorkerPayment = {
-      id: Date.now().toString(),
-      amount: netSalary,
-      date: new Date().toISOString().split('T')[0],
-      baseSalary: worker.baseSalary,
-      advances: totalAdvances,
-      absences: totalAbsences,
-      netSalary: netSalary,
-    };
+    setSaving(true);
     try {
+      const newPayment: WorkerPayment = {
+        id: Date.now().toString(),
+        amount: finalAmount,
+        date,
+        baseSalary: base,
+        advances: totalAdvances,
+        absences: totalAbsences,
+        netSalary,
+        description: description.trim() || undefined,
+        // Trace des mouvements soldés par ce paiement : ils sortent des en-cours.
+        advanceIds: pendingAdvances.map(a => a.id),
+        absenceIds: pendingAbsences.map(a => a.id),
+        isManualAmount: isManual,
+      };
       await onCreatePayment?.(newPayment);
       onClose();
     } catch (err) {
       console.error('Error creating payment:', err);
+    } finally {
+      setSaving(false);
     }
   };
 
+  const line = (
+    icon: React.ReactNode,
+    label: string,
+    value: string,
+    color: string,
+    items?: React.ReactNode
+  ) => (
+    <div
+      className="rounded-xl p-4"
+      style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border-soft)' }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide"
+              style={{ color: 'var(--color-text-muted)' }}>
+          {icon} {label}
+        </span>
+        <span className="font-black text-sm" style={{ color }}>{value}</span>
+      </div>
+      {items}
+    </div>
+  );
+
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden flex flex-col border border-saas-border max-h-[90vh]"
+        transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+        className="w-full max-w-lg rounded-3xl overflow-hidden flex flex-col max-h-[92vh]"
+        style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-lift)' }}
       >
-        <div className="p-6 border-b border-saas-border flex items-center justify-between bg-linear-to-r from-saas-primary-start via-saas-primary-via to-saas-primary-end text-white">
-          <h2 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3">
-            💸 {{fr: 'Calcul de Paiement', ar: 'حساب الراتب'}[lang]}
-          </h2>
-          <button onClick={onClose} className="p-2.5 hover:bg-white/20 rounded-xl transition-colors">
-            <X size={24} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-          {/* Worker Info */}
-          <div className="bg-saas-bg p-4 rounded-lg">
-            <h3 className="font-bold text-saas-text-main text-sm mb-1">{worker.fullName}</h3>
-            <p className="text-xs text-saas-text-muted">
-              {{fr: 'Salaire de base', ar: 'الراتب الأساسي'}[lang]}: <span className="font-bold text-saas-text-main">{worker.baseSalary.toLocaleString('fr-FR')} DZ</span>
+        <header
+          className="px-6 py-5 flex items-center justify-between"
+          style={{ background: 'linear-gradient(135deg, var(--color-gold-dark), var(--color-gold))', color: '#0A0A0B' }}
+        >
+          <div className="min-w-0">
+            <h2 className="text-xl font-black uppercase tracking-tighter flex items-center gap-2">
+              <Wallet size={20} /> {T('Paiement', 'الدفع')}
+            </h2>
+            <p className="text-[11px] font-bold uppercase tracking-widest opacity-75 truncate mt-0.5">
+              {worker.fullName}
             </p>
           </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-black/10 cursor-pointer shrink-0">
+            <X size={22} />
+          </button>
+        </header>
 
-          {/* Payment Breakdown */}
-          <div className="space-y-3">
-            <h3 className="text-xs font-black text-saas-primary-via uppercase tracking-[0.2em]">
-              📊 {{fr: 'Détail du Calcul', ar: 'تفاصيل الحساب'}[lang]}
-            </h3>
+        <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar" style={{ background: 'var(--color-bg)' }}>
+          {/* Base */}
+          {line(
+            <Wallet size={13} />,
+            worker.paymentType === 'daily'
+              ? T('Montant journalier', 'المبلغ اليومي')
+              : T('Salaire de base', 'الراتب الأساسي'),
+            money(base),
+            'var(--color-text)'
+          )}
 
-            {/* Base Salary */}
-            <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-bold text-blue-700">💵 {{fr: 'Salaire de base', ar: 'الراتب الأساسي'}[lang]}</span>
-                <span className="text-sm font-bold text-blue-700">{worker.baseSalary.toLocaleString('fr-FR')} DZ</span>
-              </div>
+          {/* Acomptes non soldés */}
+          {line(
+            <CreditCard size={13} />,
+            T('Acomptes à déduire', 'السلف المستحقة'),
+            `− ${money(totalAdvances)}`,
+            'var(--color-act-warning)',
+            pendingAdvances.length > 0 ? (
+              <ul className="mt-2 space-y-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                {pendingAdvances.map(a => (
+                  <li key={a.id} className="flex justify-between gap-3">
+                    <span className="truncate">
+                      {fmtDate(a.date)}{(a.description || a.note) ? ` — ${a.description || a.note}` : ''}
+                    </span>
+                    <span className="shrink-0 font-bold">{money(a.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1.5 text-[11px]" style={{ color: 'var(--color-text-dim)' }}>
+                {T('Aucun acompte en attente.', 'لا توجد سلف معلقة.')}
+              </p>
+            )
+          )}
+
+          {/* Absences non soldées */}
+          {line(
+            <CalendarX size={13} />,
+            T('Absences à déduire', 'الغيابات المستحقة'),
+            `− ${money(totalAbsences)}`,
+            'var(--color-act-delete)',
+            pendingAbsences.length > 0 ? (
+              <ul className="mt-2 space-y-1 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                {pendingAbsences.map(a => (
+                  <li key={a.id} className="flex justify-between gap-3">
+                    <span className="truncate">
+                      {fmtDate(a.date)}{(a.description || a.note) ? ` — ${a.description || a.note}` : ''}
+                    </span>
+                    <span className="shrink-0 font-bold">{money(a.cost)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1.5 text-[11px]" style={{ color: 'var(--color-text-dim)' }}>
+                {T('Aucune absence en attente.', 'لا توجد غيابات معلقة.')}
+              </p>
+            )
+          )}
+
+          {/* Net à payer */}
+          <div
+            className="rounded-xl p-4"
+            style={{
+              background: 'var(--color-gold-soft)',
+              border: '1px solid var(--color-vel-border-gold)',
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-black uppercase tracking-wide" style={{ color: 'var(--color-text-muted)' }}>
+                {T('Net à payer', 'الصافي المستحق')}
+              </span>
+              <span className="font-black text-2xl"
+                    style={{ color: finalAmount >= 0 ? 'var(--color-gold)' : 'var(--color-act-delete)' }}>
+                {money(finalAmount)}
+              </span>
             </div>
 
-            {/* Advances */}
-            <div className="bg-orange-50 p-4 rounded-lg border-2 border-orange-200">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-bold text-orange-700">💳 {{fr: 'Avances', ar: 'السلف'}[lang]}</span>
-                <span className="text-sm font-bold text-orange-700">- {totalAdvances.toLocaleString('fr-FR')} DZ</span>
+            {/* Ajustement manuel */}
+            {isManual ? (
+              <div className="mt-3 flex gap-2">
+                <input
+                  type="number"
+                  value={manualAmount}
+                  onChange={e => setManualAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="input-saas flex-1"
+                  placeholder={String(netSalary)}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => { setIsManual(false); setManualAmount(''); }}
+                  className="btn-icon btn-icon-gold shrink-0"
+                  title={T('Revenir au montant calculé', 'العودة للمبلغ المحسوب')}
+                >
+                  <RotateCcw size={15} />
+                </button>
               </div>
-              {worker.advances.length > 0 && (
-                <div className="text-xs text-orange-600 mt-2 space-y-1">
-                  {worker.advances.map(adv => (
-                    <p key={adv.id}>• {new Date(adv.date).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'ar-DZ')}: {adv.amount.toLocaleString('fr-FR')} DZ</p>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Absences */}
-            <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-bold text-red-700">⚠️ {{fr: 'Absences', ar: 'الغيابات'}[lang]}</span>
-                <span className="text-sm font-bold text-red-700">- {totalAbsences.toLocaleString('fr-FR')} DZ</span>
-              </div>
-              {worker.absences.length > 0 && (
-                <div className="text-xs text-red-600 mt-2 space-y-1">
-                  {worker.absences.map(abs => (
-                    <p key={abs.id}>• {new Date(abs.date).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'ar-DZ')}: {abs.cost.toLocaleString('fr-FR')} DZ</p>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Net Salary */}
-            <div className={`p-4 rounded-lg border-2 ${netSalary >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-              <div className="flex justify-between items-center">
-                <span className={`text-sm font-black ${netSalary >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                  💰 {{fr: 'Salaire Net', ar: 'الراتب الصافي'}[lang]}
-                </span>
-                <span className={`text-lg font-black ${netSalary >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                  {netSalary.toLocaleString('fr-FR')} DZ
-                </span>
-              </div>
-              {netSalary < 0 && (
-                <p className="text-xs text-red-600 mt-2">⚠️ {{fr: 'Dû par le travailleur', ar: 'مستحق من العامل'}[lang]}</p>
-              )}
-            </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setIsManual(true); setManualAmount(netSalary); }}
+                className="mt-2 text-[11px] font-bold underline flex items-center gap-1.5 cursor-pointer"
+                style={{ color: 'var(--color-gold)' }}
+              >
+                <Pencil size={11} /> {T('Modifier le montant manuellement', 'تعديل المبلغ يدويًا')}
+              </button>
+            )}
           </div>
 
-          {/* Summary */}
-          <div className="bg-saas-bg p-4 rounded-lg space-y-2 border border-saas-border">
-            <p className="text-xs font-bold text-saas-text-muted uppercase">{{fr: 'Récapitulatif', ar: 'الملخص'}[lang]}</p>
-            <div className="text-sm space-y-1">
-              <div className="flex justify-between">
-                <span className="text-saas-text-muted">{{fr: 'Avances enregistrées', ar: 'السلف المسجلة'}[lang]}:</span>
-                <span className="font-bold">{worker.advances.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-saas-text-muted">{{fr: 'Absences enregistrées', ar: 'الغيابات المسجلة'}[lang]}:</span>
-                <span className="font-bold">{worker.absences.length}</span>
-              </div>
+          {/* Date + description */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="label-saas">{T('Date du paiement', 'تاريخ الدفع')}</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input-saas" />
+            </div>
+            <div>
+              <label className="label-saas">
+                {T('Description', 'الوصف')}
+                <span style={{ color: 'var(--color-text-dim)' }}> ({T('facultatif', 'اختياري')})</span>
+              </label>
+              <input
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                className="input-saas"
+                placeholder={T('ex : salaire de juillet', 'مثال: راتب جويلية')}
+              />
             </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-saas-border flex items-center gap-2 bg-saas-bg">
-          <button 
-            onClick={onClose}
-            className="flex-1 btn-saas-outline py-2"
-          >
-            {{fr: 'Fermer', ar: 'إغلاق'}[lang]}
+        <footer className="p-5 flex gap-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+          <button onClick={onClose} className="btn-saas-outline flex-1" disabled={saving}>
+            {T('Annuler', 'إلغاء')}
           </button>
-          <button 
-            onClick={handleCreatePayment}
-            className="flex-1 btn-saas-primary py-2"
-          >
-            💸 {{fr: 'Créer Paiement', ar: 'إنشاء الدفع'}[lang]}
+          <button onClick={handleCreatePayment} className="btn-act-payment flex-1" disabled={saving}>
+            {saving
+              ? <><Loader2 size={16} className="animate-spin" />{T('Enregistrement…', 'جاري الحفظ…')}</>
+              : <><Wallet size={16} />{T('Enregistrer le paiement', 'حفظ الدفع')}</>}
           </button>
-        </div>
+        </footer>
       </motion.div>
     </div>
   );

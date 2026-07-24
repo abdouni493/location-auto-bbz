@@ -13,6 +13,9 @@ import { SendContractModal } from './SendContractModal';
 import { WebsiteOrders } from './WebsiteOrders';
 import { ReservationsService } from '../services/ReservationsService';
 import { DatabaseService } from '../services/DatabaseService';
+import { EntrepriseService } from '../services/entrepriseService';
+import { EntrepriseFormModal } from './EntreprisesPage';
+import type { Entreprise } from '../types';
 import { getCars } from '../services/carService';
 import { supabase } from '../supabase';
 import { generateConditionsPrintHTML, getConditionsTemplate } from '../constants/ConditionsTemplates';
@@ -2407,6 +2410,43 @@ export const PersonalizationModal: React.FC<{
   const [showSearchResults, setShowSearchResults] = useState(false);
   // Société (company client) state
   const [isSociete, setIsSociete] = useState(false);
+  /** Entreprise choisie dans la liste (remplit societeData automatiquement). */
+  const [selectedEntreprise, setSelectedEntreprise] = useState<Entreprise | null>(null);
+  const [entrepriseQuery, setEntrepriseQuery] = useState('');
+  const [entrepriseResults, setEntrepriseResults] = useState<Entreprise[]>([]);
+  const [entrepriseCreateOpen, setEntrepriseCreateOpen] = useState(false);
+  /**
+   * Affiche les prix et le total sur le contrat imprimé.
+   * Vrai par défaut : masquer les montants reste un choix explicite.
+   */
+  const [showContractPrices, setShowContractPrices] = useState(true);
+  // Recherche d'entreprise pour l'impression (contrat / facture).
+  useEffect(() => {
+    if (!isSociete) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      EntrepriseService.search(entrepriseQuery)
+        .then(list => { if (!cancelled) setEntrepriseResults(list); })
+        .catch(() => { if (!cancelled) setEntrepriseResults([]); });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [entrepriseQuery, isSociete]);
+
+  /** Recopie les mentions légales de l'entreprise dans le formulaire. */
+  const applyEntreprise = (e: Entreprise | null) => {
+    setSelectedEntreprise(e);
+    if (!e) return;
+    setSocieteData(prev => ({
+      ...prev,
+      entreprise: e.name || '',
+      rc: e.rc || '',
+      art: e.art || '',
+      nis: e.nis || '',
+      nif: e.nif || '',
+      email: e.email || prev.email,
+    }));
+  };
+
   const [societeData, setSocieteData] = useState({
     entreprise: '',
     conducteur: '',
@@ -2601,6 +2641,17 @@ export const PersonalizationModal: React.FC<{
     const protectionAssurancePerDay = reservation?.protectionAssurancePrice || reservation?.protectionAssurance?.pricePerDay || 0;
     // Déjà inclus dans totalPrice : ligne de détail uniquement, pas de nouveau cumul.
     const protectionAssuranceTotal = Math.round(protectionAssurancePerDay * (reservation?.totalDays || 0));
+
+    // Timbre fiscal : déjà enregistré sur la réservation lors de la création.
+    // On ne le recalcule pas ici, pour que le contrat imprime exactement le
+    // montant que le client a validé.
+    const contractTimbre = Number((reservation as any)?.timbreAmount) || 0;
+    const contractTotalTTC = reservation?.tvaApplied
+      ? (reservation?.totalPrice || 0) * 1.19
+      : (reservation?.totalPrice || 0);
+    // Le total de la réservation inclut déjà le timbre lorsqu'il a été activé ;
+    // on ne l'additionne donc pas une seconde fois.
+    const contractGrandTotal = contractTotalTTC;
     // Compact the layout whenever there is an extra block to fit (second
     // conductor and/or the société card) so everything stays on one page.
     const compact = hasSecondConductor || hasSociete;
@@ -3121,8 +3172,11 @@ export const PersonalizationModal: React.FC<{
         </div>
         ` : ''}
 
-        <!-- Pricing & Conditions (2 columns) -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <!-- Pricing & Conditions -->
+        <!-- La colonne « Tarification » disparaît quand l'agent a décoché
+             « Afficher les prix » : les conditions occupent alors toute la largeur. -->
+        <div style="display: grid; grid-template-columns: ${showContractPrices ? '1fr 1fr' : '1fr'}; gap: 10px;">
+          ${showContractPrices ? `
           <!-- Pricing -->
           <div class="section pricing-section">
             <div class="section-title">💰 ${labels.pricing}</div>
@@ -3151,12 +3205,19 @@ export const PersonalizationModal: React.FC<{
                 <span>${((reservation?.totalPrice || 0) * 0.19).toFixed(2)} DA</span>
               </div>
               ` : ''}
+              ${contractTimbre > 0 ? `
+              <div class="pricing-row">
+                <span>🧾 ${isFrench ? 'Timbre fiscal' : 'الطابع الجبائي'}:</span>
+                <span>${contractTimbre.toFixed(2)} DA</span>
+              </div>
+              ` : ''}
               <div class="pricing-row grand-total">
                 <span>${labels.totalTTC}:</span>
-                <span>${(reservation?.tvaApplied ? ((reservation?.totalPrice || 0) * 1.19) : (reservation?.totalPrice || 0)).toFixed(2)} DA</span>
+                <span>${contractGrandTotal.toFixed(2)} DA</span>
               </div>
             </div>
           </div>
+          ` : ''}
 
           <!-- Conditions -->
           <div class="section conditions-section">
@@ -5203,6 +5264,72 @@ export const PersonalizationModal: React.FC<{
                 {/* Fields - shown when checked */}
                 {isSociete && (
                   <div className="p-4 bg-white border-t border-amber-200 space-y-3">
+
+                    {/* Recherche dans les entreprises enregistrées.
+                        Sélectionner une entreprise remplit les champs ci-dessous ;
+                        ils restent modifiables à la main. */}
+                    <div className="rounded-lg p-3"
+                      style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border-soft)' }}>
+                      <label className="text-xs font-bold uppercase tracking-wide block mb-2"
+                        style={{ color: 'var(--color-gold)' }}>
+                        &#x1F50D; {lang === 'fr' ? 'Rechercher une entreprise enregistrée' : 'ابحث عن شركة مسجلة'}
+                      </label>
+
+                      {selectedEntreprise ? (
+                        <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg"
+                          style={{ background: 'var(--color-gold-soft)', border: '1px solid var(--color-vel-border-gold)' }}>
+                          <span className="font-bold text-sm truncate" style={{ color: 'var(--color-gold)' }}>
+                            {selectedEntreprise.name}
+                          </span>
+                          <button type="button"
+                            onClick={() => { applyEntreprise(null); setEntrepriseQuery(''); }}
+                            className="text-xs font-bold underline shrink-0 cursor-pointer"
+                            style={{ color: 'var(--color-text-muted)' }}>
+                            {lang === 'fr' ? 'Changer' : 'تغيير'}
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <input
+                            type="text"
+                            value={entrepriseQuery}
+                            onChange={e => setEntrepriseQuery(e.target.value)}
+                            placeholder={lang === 'fr' ? "Nom de l'entreprise…" : 'اسم الشركة…'}
+                            className="input-saas !py-2 text-sm"
+                          />
+
+                          {entrepriseResults.length > 0 && (
+                            <ul className="mt-2 max-h-40 overflow-y-auto rounded-lg custom-scrollbar"
+                              style={{ border: '1px solid var(--color-border-soft)' }}>
+                              {entrepriseResults.map(ent => (
+                                <li key={ent.id}>
+                                  <button type="button"
+                                    onClick={() => applyEntreprise(ent)}
+                                    className="w-full text-start px-3 py-2 text-xs transition-colors cursor-pointer hover:bg-[var(--color-surface-2)]">
+                                    <span className="font-bold block truncate" style={{ color: 'var(--color-text)' }}>
+                                      {ent.name}
+                                    </span>
+                                    {(ent.rc || ent.nif) && (
+                                      <span className="block font-mono truncate text-[10px]"
+                                        style={{ color: 'var(--color-text-dim)' }}>
+                                        {[ent.rc && `RC ${ent.rc}`, ent.nif && `NIF ${ent.nif}`].filter(Boolean).join(' · ')}
+                                      </span>
+                                    )}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+
+                          <button type="button"
+                            onClick={() => setEntrepriseCreateOpen(true)}
+                            className="btn-saas-outline w-full !py-1.5 !text-xs mt-2">
+                            + {lang === 'fr' ? 'Créer une nouvelle entreprise' : 'إنشاء شركة جديدة'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+
                     <p className="text-xs text-amber-600 font-semibold">
                       {lang === 'fr'
                         ? `Remplissez les champs voulus — seuls les champs remplis apparaitront sur ${type === 'contract' ? 'le contrat' : 'la facture'}.`
@@ -5282,6 +5409,58 @@ export const PersonalizationModal: React.FC<{
                 )}
               </div>
             )}
+            {/* Affichage des prix sur le contrat imprimé.
+                Activé par défaut ; l'agent peut masquer les montants pour
+                remettre un contrat sans tarification. */}
+            {type === 'contract' && (
+              <div className="mb-5 rounded-xl overflow-hidden"
+                style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
+                <label className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={showContractPrices}
+                    onChange={e => setShowContractPrices(e.target.checked)}
+                    className="w-5 h-5 cursor-pointer"
+                    style={{ accentColor: 'var(--color-gold)' }}
+                  />
+                  <span className="text-xl">&#x1F4B0;</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
+                      {lang === 'fr' ? 'Afficher les prix sur le contrat' : 'إظهار الأسعار في العقد'}
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      {lang === 'fr'
+                        ? 'Décochez pour imprimer le contrat sans la tarification ni le total.'
+                        : 'ألغِ التحديد لطباعة العقد بدون التسعير والإجمالي.'}
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-black shrink-0"
+                    style={{
+                      background: showContractPrices ? 'var(--color-gold)' : 'var(--color-surface-3)',
+                      color: showContractPrices ? '#0A0A0B' : 'var(--color-text-muted)',
+                    }}>
+                    {showContractPrices
+                      ? (lang === 'fr' ? 'AFFICHÉS' : 'ظاهرة')
+                      : (lang === 'fr' ? 'MASQUÉS' : 'مخفية')}
+                  </span>
+                </label>
+              </div>
+            )}
+
+            {/* Création d'entreprise sans quitter la fenêtre d'impression.
+                Une fois créée, elle est sélectionnée et remplit les champs. */}
+            <AnimatePresence>
+              {entrepriseCreateOpen && (
+                <EntrepriseFormModal
+                  lang={lang}
+                  entreprise={null}
+                  initialName={entrepriseQuery}
+                  onClose={() => setEntrepriseCreateOpen(false)}
+                  onSaved={saved => { applyEntreprise(saved); setEntrepriseCreateOpen(false); }}
+                />
+              )}
+            </AnimatePresence>
+
             {/* Second Conductor Search (only for contract) */}
             {type === 'contract' && (
               <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-lg p-5">

@@ -1,411 +1,450 @@
-import React, { useState, useEffect } from 'react';
-import { Worker, Language, PaymentType } from '../types';
-import { motion } from 'motion/react';
-import { X, Loader2 } from 'lucide-react';
-import { uploadWorkerProfilePhoto } from '../services/uploadWorkerImage';
+import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  X, Loader2, User, Briefcase, Wallet, KeyRound, Plus, Check, AlertTriangle, Eye, EyeOff,
+} from 'lucide-react';
+import type { Language, Worker, WorkerRole } from '../types';
+import { RoleService } from '../services/permissionsService';
 
 interface WorkerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (worker: Partial<Worker>) => void;
-  worker?: Worker;
+  onSave: (worker: Partial<Worker>) => void | Promise<void>;
+  worker?: Worker | null;
   lang: Language;
 }
 
+const emptyWorker = (): Partial<Worker> => ({
+  fullName: '',
+  dateOfBirth: '',
+  idCardNumber: '',
+  phone: '',
+  email: '',
+  address: '',
+  roleId: '',
+  roleName: '',
+  startDate: new Date().toISOString().split('T')[0],
+  isPaid: true,
+  paymentType: 'monthly',
+  baseSalary: 0,
+  hasAccount: false,
+  username: '',
+  password: '',
+});
+
+/**
+ * Création / modification d'un employé.
+ *
+ * Quatre blocs indépendants :
+ *   1. informations personnelles ;
+ *   2. poste (rôle libre, créable à la volée) et date d'entrée ;
+ *   3. rémunération — un employé peut ne PAS être rémunéré ;
+ *   4. compte de connexion — optionnel ; s'il est activé, un vrai compte
+ *      Supabase Auth est créé (RPC `create_worker_account`) et l'employé se
+ *      connecte ensuite depuis la page de login habituelle.
+ *
+ * Un employé est toujours créé SANS permission : elles se règlent ensuite
+ * depuis l'action « Permissions » de sa carte.
+ */
 export const WorkerModal: React.FC<WorkerModalProps> = ({ isOpen, onClose, onSave, worker, lang }) => {
-  const [formData, setFormData] = useState<Partial<Worker>>({
-    fullName: '',
-    dateOfBirth: '',
-    phone: '',
-    email: '',
-    address: '',
-    profilePhoto: '',
-    type: 'worker',
-    paymentType: 'monthly',
-    baseSalary: 0,
-    username: '',
-    password: '',
-  });
-  const [paymentEnabled, setPaymentEnabled] = useState(!!worker?.baseSalary);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [validationError, setValidationError] = useState<string | null>(null);
+  const isFr = lang === 'fr';
+  const T = (fr: string, ar: string) => (isFr ? fr : ar);
+
+  const [form, setForm] = useState<Partial<Worker>>(emptyWorker());
+  const [roles, setRoles] = useState<WorkerRole[]>([]);
+  const [newRole, setNewRole] = useState('');
+  const [showRoleInput, setShowRoleInput] = useState(false);
+  const [creatingRole, setCreatingRole] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    if (worker) {
-      setFormData(worker);
-      setPaymentEnabled(!!worker.baseSalary);
-    } else {
-      setFormData({
-        fullName: '',
-        dateOfBirth: '',
-        phone: '',
-        email: '',
-        address: '',
-        profilePhoto: '',
-        type: 'worker',
-        paymentType: 'monthly',
-        baseSalary: 0,
-        username: '',
-        password: '',
-      });
-      setPaymentEnabled(false);
-    }
+    if (!isOpen) return;
+    // En modification, le mot de passe repart vide : le laisser tel quel
+    // signifie « ne pas changer ».
+    setForm(worker ? { ...emptyWorker(), ...worker, password: '' } : emptyWorker());
+    setError(null);
+    RoleService.getAll().then(setRoles).catch(() => setRoles([]));
   }, [worker, isOpen]);
 
   if (!isOpen) return null;
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: name === 'baseSalary' ? parseFloat(value) || 0 : value
-    }));
-    // Clear validation error when user starts typing
-    if (validationError) {
-      setValidationError(null);
+  const set = (k: keyof Worker, v: any) => setForm(p => ({ ...p, [k]: v }));
+
+  const addRole = async () => {
+    const name = newRole.trim();
+    if (!name) return;
+    setCreatingRole(true);
+    try {
+      const role = await RoleService.create(name);
+      setRoles(prev => (prev.some(r => r.id === role.id) ? prev : [...prev, role]));
+      set('roleId', role.id);
+      set('roleName', role.name);
+      setNewRole('');
+      setShowRoleInput(false);
+    } catch (err: any) {
+      setError(err?.message || T("Le rôle n'a pas pu être créé.", 'تعذر إنشاء الدور.'));
+    } finally {
+      setCreatingRole(false);
     }
   };
 
-  const handlePaymentTypeToggle = (type: PaymentType) => {
-    setFormData(prev => ({
-      ...prev,
-      paymentType: prev.paymentType === type ? undefined : type
-    }));
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      const file = files[0];
-      setUploading(true);
-      setUploadError(null);
-      try {
-        const result = await uploadWorkerProfilePhoto(file, worker?.id);
-        if (result.success && result.url) {
-          setFormData(prev => ({
-            ...prev,
-            profilePhoto: result.url
-          }));
-        } else {
-          setUploadError(result.error || 'Upload failed');
-        }
-      } catch (err) {
-        console.error('Upload failed:', err);
-        setUploadError('Upload failed');
-      } finally {
-        setUploading(false);
-      }
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setValidationError(null);
-
-    // Validation
-    const errors: string[] = [];
-
-    if (!formData.fullName?.trim()) {
-      errors.push(lang === 'fr' ? 'Nom complet est requis' : 'الاسم الكامل مطلوب');
-    }
-    if (!formData.phone?.trim()) {
-      errors.push(lang === 'fr' ? 'Téléphone est requis' : 'الهاتف مطلوب');
-    }
-    if (!formData.email?.trim()) {
-      errors.push(lang === 'fr' ? 'Email est requis' : 'البريد الإلكتروني مطلوب');
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      errors.push(lang === 'fr' ? 'Email invalide' : 'بريد إلكتروني غير صحيح');
-    }
-    if (!formData.username?.trim()) {
-      errors.push(lang === 'fr' ? 'Nom d\'utilisateur est requis' : 'اسم المستخدم مطلوب');
-    }
-    if (!formData.password?.trim()) {
-      errors.push(lang === 'fr' ? 'Mot de passe est requis' : 'كلمة المرور مطلوبة');
-    } else if (formData.password.length < 6) {
-      errors.push(lang === 'fr' ? 'Mot de passe doit avoir au moins 6 caractères' : 'كلمة المرور يجب أن تكون على الأقل 6 أحرف');
-    }
-    if (paymentEnabled && (!formData.baseSalary || formData.baseSalary <= 0)) {
-      errors.push(lang === 'fr' ? 'Salaire de base est requis' : 'الراتب الأساسي مطلوب');
-    }
-
-    if (errors.length > 0) {
-      setValidationError(errors.join(', '));
+  const submit = async () => {
+    if (!form.fullName?.trim()) {
+      setError(T('Le nom complet est obligatoire.', 'الاسم الكامل إلزامي.'));
       return;
     }
-
-    try {
-      setSaving(true);
-      await onSave(formData);
-      // Success - modal will be closed by parent
-    } catch (err: any) {
-      console.error('Error saving worker:', err);
-      let errorMsg = lang === 'fr' ? 'Erreur lors de l\'enregistrement du travailleur' : 'خطأ في حفظ العامل';
-      
-      // Handle specific Supabase Auth errors
-      if (err.message) {
-        if (err.message.includes('already registered')) {
-          errorMsg = lang === 'fr' ? 'Cet email est déjà utilisé' : 'هذا البريد الإلكتروني مستخدم بالفعل';
-        } else if (err.message.includes('Auth')) {
-          errorMsg = lang === 'fr' ? 'Erreur d\'authentification: ' + err.message : 'خطأ في المصادقة: ' + err.message;
-        } else {
-          errorMsg = err.message;
-        }
+    if (!form.phone?.trim()) {
+      setError(T('Le numéro de téléphone est obligatoire.', 'رقم الهاتف إلزامي.'));
+      return;
+    }
+    if (form.hasAccount) {
+      if (!form.email?.trim()) {
+        setError(T("L'email est obligatoire pour activer le compte.", 'البريد إلزامي لتفعيل الحساب.'));
+        return;
       }
-      setValidationError(errorMsg);
+      // À la CRÉATION seulement : un mot de passe est indispensable.
+      if (!worker && (!form.password || form.password.length < 6)) {
+        setError(T('Mot de passe : 6 caractères minimum.', 'كلمة المرور: 6 أحرف على الأقل.'));
+        return;
+      }
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(form);
+    } catch (err: any) {
+      setError(err?.message || T("L'enregistrement a échoué.", 'فشل الحفظ.'));
     } finally {
       setSaving(false);
     }
   };
 
+  const section = (icon: React.ReactNode, title: string, children: React.ReactNode) => (
+    <section className="space-y-4">
+      <h3
+        className="text-xs font-black uppercase tracking-[0.2em] flex items-center gap-2.5"
+        style={{ color: 'var(--color-gold)' }}
+      >
+        <span className="p-1.5 rounded-lg" style={{ background: 'var(--color-gold-soft)' }}>{icon}</span>
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+
+  /** Interrupteur réutilisé par « rémunéré » et « compte de connexion ». */
+  const toggle = (on: boolean, onClick: () => void, title: string, hint: string) => (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={onClick}
+      className="w-full flex items-center justify-between gap-4 p-4 rounded-xl text-left cursor-pointer"
+      style={{
+        background: on ? 'var(--color-gold-soft)' : 'var(--color-surface-2)',
+        border: `1px solid ${on ? 'var(--color-gold)' : 'var(--color-border-soft)'}`,
+      }}
+    >
+      <span className="min-w-0">
+        <span className="block font-bold text-sm" style={{ color: on ? 'var(--color-gold)' : 'var(--color-text)' }}>
+          {title}
+        </span>
+        <span className="block text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{hint}</span>
+      </span>
+      <span
+        className="relative w-12 h-6 rounded-full shrink-0 transition-colors"
+        style={{
+          background: on ? 'var(--color-gold)' : 'var(--color-surface-3)',
+          border: '1px solid var(--color-border-soft)',
+        }}
+      >
+        <span
+          className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
+          style={{
+            left: on ? 'calc(100% - 1.375rem)' : '0.125rem',
+            background: on ? '#0A0A0B' : 'var(--color-text-muted)',
+          }}
+        />
+      </span>
+    </button>
+  );
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden flex flex-col border border-saas-border max-h-[90vh]"
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+        className="w-full max-w-3xl rounded-3xl overflow-hidden flex flex-col max-h-[92vh]"
+        style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-lift)' }}
       >
-        <div className="p-6 border-b border-saas-border flex items-center justify-between bg-linear-to-r from-saas-primary-start via-saas-primary-via to-saas-primary-end text-white">
+        <header
+          className="px-6 py-5 flex items-center justify-between"
+          style={{ background: 'linear-gradient(135deg, var(--color-gold-dark), var(--color-gold))', color: '#0A0A0B' }}
+        >
           <div>
-            <h2 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3">
-              {worker ? '✏️' : '➕'} 
-              {worker 
-                ? (lang === 'fr' ? 'Modifier' : 'تعديل')
-                : (lang === 'fr' ? 'Ajouter un membre' : 'إضافة عضو')}
+            <h2 className="text-xl font-black uppercase tracking-tighter">
+              {worker ? T("Modifier l'employé", 'تعديل الموظف') : T('Nouvel employé', 'موظف جديد')}
             </h2>
-          </div>
-          <button onClick={onClose} className="p-2.5 hover:bg-white/20 rounded-xl transition-colors">
-            <X size={24} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
-          {/* Photo */}
-          <div className="flex flex-col items-center">
-            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-saas-primary-via shadow-lg bg-saas-bg flex items-center justify-center mb-3">
-              {formData.profilePhoto ? (
-                <img src={formData.profilePhoto} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              ) : (
-                <span className="text-3xl">👤</span>
-              )}
-            </div>
-            <label className={`btn-saas-primary px-4 py-2 text-sm cursor-pointer flex items-center justify-center gap-2 ${uploading ? 'opacity-50' : ''}`}>
-              {uploading ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  {lang === 'fr' ? 'Téléchargement...' : 'جاري الرفع...'}
-                </>
-              ) : (
-                <>
-                  📷 {lang === 'fr' ? 'Photo (optionnel)' : 'الصورة (اختياري)'}
-                </>
-              )}
-              <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" disabled={uploading} />
-            </label>
-          </div>
-
-          {/* Full Name */}
-          <div className="space-y-2">
-            <label className="label-saas">👤 {{fr: 'Nom Complet *', ar: 'الاسم الكامل *'}[lang]}</label>
-            <input
-              type="text"
-              name="fullName"
-              value={formData.fullName}
-              onChange={handleChange}
-              placeholder="Ahmed Boudjellal"
-              className="input-saas"
-              required
-            />
-          </div>
-
-          {/* Date of Birth */}
-          <div className="space-y-2">
-            <label className="label-saas">🎂 {{fr: 'Date de naissance', ar: 'تاريخ الميلاد'}[lang]}</label>
-            <input
-              type="date"
-              name="dateOfBirth"
-              value={formData.dateOfBirth || ''}
-              onChange={handleChange}
-              className="input-saas"
-            />
-          </div>
-
-          {/* Phone */}
-          <div className="space-y-2">
-            <label className="label-saas">📱 {{fr: 'Téléphone *', ar: 'الهاتف *'}[lang]}</label>
-            <input
-              type="tel"
-              name="phone"
-              value={formData.phone}
-              onChange={handleChange}
-              placeholder="+213 5 1234 5678"
-              className="input-saas"
-              required
-            />
-          </div>
-
-          {/* Email */}
-          <div className="space-y-2">
-            <label className="label-saas">📧 {{fr: 'E-mail', ar: 'البريد الإلكتروني'}[lang]}</label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="ahmed@email.com"
-              className="input-saas"
-              required
-            />
-          </div>
-
-          {/* Address */}
-          <div className="space-y-2">
-            <label className="label-saas">📍 {{fr: 'Adresse', ar: 'العنوان'}[lang]}</label>
-            <input
-              type="text"
-              name="address"
-              value={formData.address || ''}
-              onChange={handleChange}
-              placeholder="Alger, Algeria"
-              className="input-saas"
-            />
-          </div>
-
-          {/* Worker Type */}
-          <div className="space-y-2">
-            <label className="label-saas">👨‍💼 {{fr: 'Type de travailleur *', ar: 'نوع العامل *'}[lang]}</label>
-            <select name="type" value={formData.type || 'worker'} onChange={handleChange} className="input-saas" required>
-              <option value="admin">{{fr: 'Admin', ar: 'مسؤول'}[lang]}</option>
-              <option value="worker">{{fr: 'Travailleur', ar: 'عامل'}[lang]}</option>
-              <option value="driver">{{fr: 'Chauffeur', ar: 'سائق'}[lang]}</option>
-            </select>
-          </div>
-
-          {/* Payment Enabled Toggle */}
-          <div className="space-y-2">
-            <label className="label-saas">💰 {{fr: 'Appliquer le paiement ?', ar: 'تطبيق الدفع؟'}[lang]}</label>
-            <button
-              type="button"
-              onClick={() => setPaymentEnabled(!paymentEnabled)}
-              className={`w-full py-3 px-4 rounded-lg font-bold text-sm transition-all ${
-                paymentEnabled
-                  ? 'btn-saas-primary'
-                  : 'btn-saas-outline'
-              }`}
-            >
-              {paymentEnabled ? '✅ ' : '❌ '} {{fr: 'Paiement activé', ar: 'الدفع مفعل'}[lang]}
-            </button>
-          </div>
-
-          {paymentEnabled && (
-            <>
-              {/* Payment Type Toggle */}
-              <div className="space-y-2">
-                <label className="label-saas">💰 {{fr: 'Type de paiement', ar: 'نوع الدفع'}[lang]}</label>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handlePaymentTypeToggle('daily')}
-                    className={`flex-1 py-2 px-3 rounded-lg font-bold text-sm transition-all ${
-                      formData.paymentType === 'daily'
-                        ? 'btn-saas-primary'
-                        : 'btn-saas-outline'
-                    }`}
-                  >
-                    {{fr: 'Par jour', ar: 'يومياً'}[lang]}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePaymentTypeToggle('monthly')}
-                    className={`flex-1 py-2 px-3 rounded-lg font-bold text-sm transition-all ${
-                      formData.paymentType === 'monthly'
-                        ? 'btn-saas-primary'
-                        : 'btn-saas-outline'
-                    }`}
-                  >
-                    {{fr: 'Par mois', ar: 'شهرياً'}[lang]}
-                  </button>
-                </div>
-              </div>
-
-              {/* Base Salary */}
-              <div className="space-y-2">
-                <label className="label-saas">💵 {{fr: 'Montant du salaire (DZ) *', ar: 'مبلغ الراتب (دينار) *'}[lang]}</label>
-                <input
-                  type="number"
-                  name="baseSalary"
-                  value={formData.baseSalary || 0}
-                  onChange={handleChange}
-                  placeholder="3500"
-                  className="input-saas"
-                  required={paymentEnabled}
-                />
-              </div>
-            </>
-          )}
-
-          {/* Username */}
-          <div className="space-y-2">
-            <label className="label-saas">🔐 {{fr: 'Nom d\'utilisateur *', ar: 'اسم المستخدم *'}[lang]}</label>
-            <input
-              type="text"
-              name="username"
-              value={formData.username}
-              onChange={handleChange}
-              placeholder="ahmed.boudj"
-              className="input-saas"
-              required
-            />
-          </div>
-
-          {/* Password */}
-          <div className="space-y-2">
-            <label className="label-saas">🔒 {{fr: 'Mot de passe *', ar: 'كلمة المرور *'}[lang]}</label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="••••••••"
-              className="input-saas"
-              required
-            />
-          </div>
-        </form>
-
-        {/* Actions */}
-        {(validationError || uploadError) && (
-          <div className="px-6 py-3 bg-red-50 border-t border-red-200">
-            <p className="text-red-600 text-sm font-medium">
-              ⚠️ {validationError || uploadError}
+            <p className="text-[10px] font-bold uppercase tracking-widest opacity-70 mt-0.5">
+              {T('Équipe & permissions', 'الفريق والصلاحيات')}
             </p>
           </div>
-        )}
-        <div className="p-6 border-t border-saas-border flex items-center gap-4 bg-saas-bg">
-          <button 
-            onClick={onClose} 
-            className="flex-1 btn-saas-outline py-3"
-            disabled={saving}
-          >
-            {{fr: 'Annuler', ar: 'إلغاء'}[lang]}
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-black/10 cursor-pointer">
+            <X size={22} />
           </button>
-          <button 
-            onClick={handleSubmit}
-            className="flex-1 btn-saas-primary py-3 flex items-center justify-center gap-2"
-            disabled={saving || uploading}
-          >
-            {saving ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                {lang === 'fr' ? 'Enregistrement...' : 'جاري الحفظ...'}
-              </>
-            ) : (
-              lang === 'fr' ? 'Enregistrer' : 'حفظ'
-            )}
-          </button>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar" style={{ background: 'var(--color-bg)' }}>
+          {/* ── 1. Informations personnelles ── */}
+          {section(<User size={14} />, T('Informations personnelles', 'المعلومات الشخصية'), (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="label-saas">{T('Nom complet', 'الاسم الكامل')} *</label>
+                <input value={form.fullName ?? ''} onChange={e => set('fullName', e.target.value)}
+                       className="input-saas" placeholder={T('ex : Karim Benali', 'مثال: كريم بن علي')} autoFocus />
+              </div>
+              <div>
+                <label className="label-saas">{T('Date de naissance', 'تاريخ الميلاد')}</label>
+                <input type="date" value={form.dateOfBirth ?? ''} onChange={e => set('dateOfBirth', e.target.value)}
+                       className="input-saas" />
+              </div>
+              <div>
+                <label className="label-saas">
+                  {T("N° de pièce d'identité", 'رقم بطاقة الهوية')}
+                  <span style={{ color: 'var(--color-text-dim)' }}> ({T('facultatif', 'اختياري')})</span>
+                </label>
+                <input value={form.idCardNumber ?? ''} onChange={e => set('idCardNumber', e.target.value)}
+                       className="input-saas" />
+              </div>
+              <div>
+                <label className="label-saas">{T('Téléphone', 'الهاتف')} *</label>
+                <input value={form.phone ?? ''} onChange={e => set('phone', e.target.value)}
+                       className="input-saas" placeholder="0555 00 00 00" />
+              </div>
+              <div>
+                <label className="label-saas">{T('Adresse', 'العنوان')}</label>
+                <input value={form.address ?? ''} onChange={e => set('address', e.target.value)} className="input-saas" />
+              </div>
+            </div>
+          ))}
+
+          {/* ── 2. Poste ── */}
+          {section(<Briefcase size={14} />, T('Poste', 'المنصب'), (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label-saas">{T('Rôle', 'الدور')}</label>
+                <div className="flex gap-2">
+                  <select
+                    value={form.roleId ?? ''}
+                    onChange={e => {
+                      const r = roles.find(x => x.id === e.target.value);
+                      set('roleId', e.target.value);
+                      set('roleName', r?.name ?? '');
+                    }}
+                    className="input-saas flex-1"
+                  >
+                    <option value="">{T('— Choisir un rôle —', '— اختر دورًا —')}</option>
+                    {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowRoleInput(v => !v)}
+                    className="btn-icon btn-icon-gold shrink-0"
+                    title={T('Créer un rôle', 'إنشاء دور')}
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+
+                <AnimatePresence>
+                  {showRoleInput && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="flex gap-2 mt-2">
+                        <input
+                          value={newRole}
+                          onChange={e => setNewRole(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addRole(); } }}
+                          className="input-saas flex-1"
+                          placeholder={T('Nom du nouveau rôle', 'اسم الدور الجديد')}
+                        />
+                        <button type="button" onClick={addRole} disabled={creatingRole || !newRole.trim()}
+                                className="btn-saas-primary !px-4">
+                          {creatingRole ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <div>
+                <label className="label-saas">{T('Date de début de travail', 'تاريخ بدء العمل')}</label>
+                <input type="date" value={form.startDate ?? ''} onChange={e => set('startDate', e.target.value)}
+                       className="input-saas" />
+              </div>
+            </div>
+          ))}
+
+          {/* ── 3. Rémunération ── */}
+          {section(<Wallet size={14} />, T('Rémunération', 'الأجر'), (
+            <div className="space-y-4">
+              {toggle(
+                form.isPaid !== false,
+                () => set('isPaid', form.isPaid === false),
+                T('Cet employé est rémunéré', 'هذا الموظف يتقاضى أجرًا'),
+                T('Désactivez pour un bénévole ou un stagiaire non payé.',
+                  'عطّل الخيار للمتطوع أو المتدرب غير المدفوع.')
+              )}
+
+              <AnimatePresence initial={false}>
+                {form.isPaid !== false && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                      <div>
+                        <label className="label-saas">{T('Type de paiement', 'نوع الدفع')}</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {([
+                            { v: 'monthly' as const, fr: 'Par mois', ar: 'شهريًا', icon: '📅' },
+                            { v: 'daily' as const,   fr: 'Par jour', ar: 'يوميًا', icon: '☀️' },
+                          ]).map(o => {
+                            const active = form.paymentType === o.v;
+                            return (
+                              <button key={o.v} type="button" onClick={() => set('paymentType', o.v)}
+                                className="py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                style={{
+                                  background: active ? 'var(--color-gold-soft)' : 'var(--color-surface-2)',
+                                  border: `1px solid ${active ? 'var(--color-gold)' : 'var(--color-border-soft)'}`,
+                                  color: active ? 'var(--color-gold)' : 'var(--color-text-muted)',
+                                }}>
+                                {o.icon} {isFr ? o.fr : o.ar}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label-saas">
+                          {form.paymentType === 'daily'
+                            ? T('Montant par jour (DA)', 'المبلغ اليومي (دج)')
+                            : T('Salaire mensuel (DA)', 'الراتب الشهري (دج)')}
+                        </label>
+                        <input type="number" min={0} value={form.baseSalary ?? 0}
+                               onChange={e => set('baseSalary', Number(e.target.value) || 0)}
+                               className="input-saas" />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ))}
+
+          {/* ── 4. Compte de connexion ── */}
+          {section(<KeyRound size={14} />, T('Compte de connexion', 'حساب الدخول'), (
+            <div className="space-y-4">
+              {toggle(
+                form.hasAccount === true,
+                () => set('hasAccount', !form.hasAccount),
+                T("Autoriser la connexion à l'application", 'السماح بالدخول إلى التطبيق'),
+                T("Un compte est créé : l'employé se connecte avec son email et son mot de passe.",
+                  'يُنشأ حساب: يدخل الموظف ببريده وكلمة المرور.')
+              )}
+
+              <AnimatePresence initial={false}>
+                {form.hasAccount && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                      <div className="sm:col-span-2">
+                        <label className="label-saas">{T('Email de connexion', 'بريد الدخول')} *</label>
+                        <input type="email" value={form.email ?? ''} onChange={e => set('email', e.target.value)}
+                               className="input-saas" placeholder="employe@agence.dz" />
+                      </div>
+                      <div>
+                        <label className="label-saas">{T("Nom d'utilisateur", 'اسم المستخدم')}</label>
+                        <input value={form.username ?? ''} onChange={e => set('username', e.target.value)}
+                               className="input-saas" />
+                      </div>
+                      <div>
+                        <label className="label-saas">
+                          {T('Mot de passe', 'كلمة المرور')} {worker ? '' : '*'}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={form.password ?? ''}
+                            onChange={e => set('password', e.target.value)}
+                            className="input-saas pr-11"
+                            placeholder={worker ? T('Laisser vide pour ne pas changer', 'اتركه فارغًا للإبقاء') : '••••••'}
+                          />
+                          <button type="button" onClick={() => setShowPassword(v => !v)}
+                            className="absolute end-3 top-1/2 -translate-y-1/2 cursor-pointer"
+                            style={{ color: 'var(--color-text-muted)' }}
+                            aria-label={T('Afficher le mot de passe', 'إظهار كلمة المرور')}>
+                            {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ))}
+
+          {/* Rappel : les permissions se règlent après la création */}
+          {!worker && (
+            <div className="flex items-start gap-2.5 p-4 rounded-xl text-xs"
+                 style={{ background: 'rgba(59,130,246,0.10)', color: 'var(--color-act-edit)' }}>
+              <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+              <span>
+                {T(
+                  "L'employé sera créé sans aucune permission. Utilisez ensuite l'action « Permissions » de sa carte pour choisir les pages et les boutons auxquels il a accès.",
+                  'سيُنشأ الموظف بدون أي صلاحية. استخدم بعد ذلك زر « الصلاحيات » في بطاقته لاختيار الصفحات والأزرار المسموح بها.'
+                )}
+              </span>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--color-act-delete)' }}>
+              <AlertTriangle size={15} /> {error}
+            </p>
+          )}
         </div>
+
+        <footer className="p-5 flex gap-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+          <button onClick={onClose} className="btn-saas-outline flex-1" disabled={saving}>
+            {T('Annuler', 'إلغاء')}
+          </button>
+          <button onClick={submit} className="btn-saas-primary flex-1" disabled={saving}>
+            {saving
+              ? <><Loader2 size={16} className="animate-spin" />{T('Enregistrement…', 'جاري الحفظ…')}</>
+              : (worker ? T('Enregistrer', 'حفظ') : T("Créer l'employé", 'إنشاء الموظف'))}
+          </button>
+        </footer>
       </motion.div>
     </div>
   );
 };
+
+export default WorkerModal;

@@ -10,11 +10,11 @@ import { toYmd } from './wizard/wizardUi';
 
 // ─── Colour tokens for this page ───────────────────────────────────────────
 const C = {
-  accent:    '#DC2626',
+  accent:    'var(--color-gold)',
   amber:     '#D97706',
-  accentDim: 'rgba(220,38,38,0.1)',
+  accentDim: 'rgba(212,175,55,0.1)',
   amberDim:  'rgba(217,119,6,0.1)',
-  bg:        '#F8FAFC',
+  bg:        'var(--color-bg)',
   surface:   '#FFFFFF',
 };
 
@@ -28,7 +28,7 @@ function HeroVisual() {
         animate={{ rotate: 360 }}
         transition={{ duration: 28, repeat: Infinity, ease: 'linear' }}
         className="absolute w-[400px] h-[400px] rounded-full"
-        style={{ border: '1px solid rgba(220,38,38,0.09)' }}
+        style={{ border: '1px solid rgba(212,175,55,0.09)' }}
       >
         <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full"
           style={{ background: C.accent, boxShadow: `0 0 14px ${C.accent}` }} />
@@ -50,7 +50,7 @@ function HeroVisual() {
         animate={{ scale: [1, 1.07, 1], opacity: [0.35, 0.65, 0.35] }}
         transition={{ duration: 3, repeat: Infinity }}
         className="absolute w-[180px] h-[180px] rounded-full"
-        style={{ border: '1px solid rgba(220,38,38,0.3)' }}
+        style={{ border: '1px solid rgba(212,175,55,0.3)' }}
       />
 
       {/* Corner accent dots */}
@@ -168,9 +168,9 @@ function BookingSearchPanel({ lang, agencies, onSearch, hasBg }: {
           className={`px-8 py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 whitespace-nowrap transition-all ${!isValid ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:shadow-lg hover:shadow-red-500/20'}`}
           style={{
             fontFamily: 'var(--font-display)',
-            background: `linear-gradient(135deg, ${C.accent}, #B91C1C)`,
+            background: `linear-gradient(135deg, ${C.accent}, var(--color-gold-dark))`,
             color: '#FFFFFF',
-            boxShadow: isValid ? '0 6px 20px rgba(220,38,38,0.25)' : 'none',
+            boxShadow: isValid ? '0 6px 20px rgba(212,175,55,0.25)' : 'none',
           }}
         >
           {{ fr: 'Suivant', ar: 'التالي' }[lang]} <ArrowRight size={16} />
@@ -255,7 +255,7 @@ export const Welcome: React.FC<WelcomeProps> = ({ lang, websiteSettings, agencie
             }} />
             {/* Left-side text protection gradient */}
             <div className="absolute inset-0" style={{
-              background: 'linear-gradient(90deg, rgba(15,23,42,0.5) 0%, rgba(15,23,42,0.1) 55%, transparent 100%)',
+              background: 'linear-gradient(90deg, rgba(15,23,42,0.5) 0%, var(--color-border-soft) 55%, transparent 100%)',
             }} />
           </div>
         )}
@@ -346,8 +346,8 @@ export const Welcome: React.FC<WelcomeProps> = ({ lang, websiteSettings, agencie
       {/* ══ FEATURES SECTION ══ */}
       <section className="relative py-24 px-4 sm:px-6 lg:px-8" style={{
         background: '#FFFFFF',
-        borderTop: '1px solid rgba(15,23,42,0.06)',
-        borderBottom: '1px solid rgba(15,23,42,0.06)',
+        borderTop: '1px solid var(--color-border-soft)',
+        borderBottom: '1px solid var(--color-border-soft)',
       }}>
         <div className="max-w-7xl mx-auto">
           <motion.div
@@ -377,8 +377,8 @@ export const Welcome: React.FC<WelcomeProps> = ({ lang, websiteSettings, agencie
                 whileHover={{ y: -6 }}
                 className="rounded-2xl p-8 space-y-4 transition-all duration-300 cursor-default"
                 style={{
-                  background: 'rgba(220,38,38,0.04)',
-                  border: '1px solid rgba(220,38,38,0.09)',
+                  background: 'rgba(212,175,55,0.04)',
+                  border: '1px solid rgba(212,175,55,0.09)',
                   backdropFilter: 'blur(12px)',
                 }}
                 onMouseEnter={e => {
@@ -386,7 +386,7 @@ export const Welcome: React.FC<WelcomeProps> = ({ lang, websiteSettings, agencie
                   (e.currentTarget as HTMLElement).style.boxShadow = `0 0 30px ${C.accent}12`;
                 }}
                 onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(220,38,38,0.09)';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'rgba(212,175,55,0.09)';
                   (e.currentTarget as HTMLElement).style.boxShadow = 'none';
                 }}
               >
@@ -439,9 +439,9 @@ export const Welcome: React.FC<WelcomeProps> = ({ lang, websiteSettings, agencie
             className="inline-flex items-center gap-2 text-lg px-12 py-5 rounded-xl font-bold transition-all duration-300"
             style={{
               fontFamily: 'var(--font-display)',
-              background: `linear-gradient(135deg, ${C.accent}, #B91C1C)`,
+              background: `linear-gradient(135deg, ${C.accent}, var(--color-gold-dark))`,
               color: '#FFFFFF',
-              boxShadow: `0 6px 18px rgba(220,38,38,0.28)`,
+              boxShadow: `0 6px 18px rgba(212,175,55,0.28)`,
             }}
           >
             <CarIcon size={20} /> {{ fr: 'Voir tous les véhicules', ar: 'عرض جميع السيارات' }[lang]}

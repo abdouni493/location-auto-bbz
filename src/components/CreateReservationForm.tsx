@@ -6,6 +6,9 @@ import { AGENCIES, CAR_IMAGES } from '../constants';
 import { DatabaseService } from '../services/DatabaseService';
 import { ReservationsService } from '../services/ReservationsService';
 import { uploadInspectionImage } from '../services/uploadInspectionImage';
+import { calcTimbre, describeTimbre, TIMBRE_TIERS } from '../utils/timbre';
+import { InspectionChecklist } from './inspection/InspectionChecklist';
+import { InspectionPhotos, type InspectionPhoto, type PhotoSlot } from './inspection/InspectionPhotos';
 import { ClientModal } from './ClientModal';
 import { supabase } from '../supabase';
 
@@ -420,7 +423,11 @@ export const CreateReservationForm: React.FC<CreateReservationFormProps> = ({ la
             deposit: formData.step2?.selectedCar?.deposit || 0,
             advancePayment: advancePayment,
             remainingPayment: remainingPayment,
-            status: 'pending', // save as pending until confirmed
+            // L'étape « Inspection Départ » décide du statut : si l'agent y a
+            // saisi quoi que ce soit (kilométrage, carburant, checklist, photos,
+            // notes, signature), la location est prête et la réservation est
+            // créée CONFIRMÉE. Sinon elle reste en attente.
+            status: hasInspectionInput() ? 'confirmed' : 'pending',
             notes: formData.step6?.notes || '',
             // Caution and Assurance fields
             cautionAmountDzd: (formData.step6 as any)?.caution_amount_dzd || formData.step2?.selectedCar?.deposit || 0,
@@ -432,6 +439,9 @@ export const CreateReservationForm: React.FC<CreateReservationFormProps> = ({ la
                 ? Number((formData.step6 as any)?.assurancePercentage)
                 : 0
               : 0,
+            // Timbre fiscal : le total enregistré l'inclut déjà si l'agent l'a activé.
+            timbreEnabled: (formData.step6 as any)?.timbreEnabled || false,
+            timbreAmount: (formData.step6 as any)?.timbreAmount || 0,
             // Assurance de protection sélectionnée (snapshot nom + prix/jour)
             protectionAssuranceId: formData.protectionAssurance?.id || null,
             protectionAssuranceName: formData.protectionAssurance?.name || null,
@@ -1243,9 +1253,24 @@ export const Step3DepartureInspection: React.FC<{
     if (existingMileage && existingMileage > 0) return existingMileage.toString();
     return _carMileage ? _carMileage.toString() : '';
   });
+  /**
+   * Kilométrage pré-rempli à l'ouverture. Sert à distinguer « l'utilisateur a
+   * saisi un kilométrage de départ » de « le champ affiche encore la valeur
+   * proposée » — sans ça, l'étape paraîtrait toujours renseignée.
+   */
+  const initialMileageRef = React.useRef<string>('');
+  useEffect(() => {
+    // Le véhicule peut être choisi APRÈS le montage : on fige la valeur de
+    // référence la première fois qu'un kilométrage par défaut apparaît.
+    if (!initialMileageRef.current && _carMileage) {
+      initialMileageRef.current = _carMileage.toString();
+    }
+  }, [_carMileage]);
   const [selectedInspectionLocation, setSelectedInspectionLocation] = useState('');
   const [notes, setNotes] = useState('');
-  const [photos, setPhotos] = useState<{ url: string; type: string; file?: File }[]>([]);
+  const [photos, setPhotos] = useState<InspectionPhoto[]>([]);
+  /** Cadrage dont l'upload est en cours (affiche le spinner sur la bonne vignette). */
+  const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
   const [signature, setSignature] = useState('');
   const [agencies, setAgencies] = useState<any[]>([]);
   const [isLoadingAgencies, setIsLoadingAgencies] = useState(true);
@@ -1423,10 +1448,38 @@ export const Step3DepartureInspection: React.FC<{
     setChecklistResponses(responses);
   }, [formData.step3?.departureInspection]);
 
+  /**
+   * L'utilisateur a-t-il RENSEIGNÉ quelque chose sur l'étape « Inspection » ?
+   *
+   * Sert à décider du statut à la création :
+   *   • une inspection de départ renseignée  → la location est réputée prête,
+   *     la réservation est créée directement en `confirmed` ;
+   *   • l'étape laissée intacte              → `pending`, à confirmer plus tard.
+   *
+   * On regarde l'état réel des champs plutôt qu'un drapeau posé par un
+   * gestionnaire d'événement : le résultat reste juste même si l'utilisateur
+   * revient en arrière et vide ce qu'il avait saisi.
+   */
+  const hasInspectionInput = (): boolean => {
+    const typedMileage = String(mileage ?? '').trim();
+    // Le kilométrage ne compte que s'il DIFFÈRE de la valeur pré-remplie.
+    const mileageTouched = Boolean(typedMileage) && typedMileage !== initialMileageRef.current;
+
+    return Boolean(
+      mileageTouched ||
+      fuelLevel !== 'full' ||
+      String(notes ?? '').trim() ||
+      signature ||
+      photos.length > 0 ||
+      Object.keys(checklistResponses).length > 0
+    );
+  };
+
   const saveInspectionData = () => {
     // Prepare inspection items from checklist responses
     const inspectionItems: any[] = [];
     Object.entries(checklistResponses).forEach(([itemId, checked]) => {
+      // (parcours des réponses de la checklist)
       const item = checklistItems.find(i => i.id === itemId);
       if (item) {
         inspectionItems.push({
@@ -1464,7 +1517,7 @@ export const Step3DepartureInspection: React.FC<{
 
   // Auto-save inspection data when key fields change
   useEffect(() => {
-    if (mileage || fuelLevel !== 'full' || notes || signature || photos.length > 0 || Object.keys(checklistResponses).length > 0) {
+    if (hasInspectionInput()) {
       saveInspectionData();
     }
   }, [mileage, fuelLevel, notes, signature, photos, checklistResponses]);
@@ -1543,26 +1596,38 @@ export const Step3DepartureInspection: React.FC<{
     setPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
-  const inspectionCategories = [
-    {
-      key: 'securite',
-      title: lang === 'fr' ? 'Sécurité' : 'الأمان',
-      icon: '🛡️',
-      items: groupedItems.securite || []
-    },
-    {
-      key: 'equipements',
-      title: lang === 'fr' ? 'Équipements' : 'المعدات',
-      icon: '🔧',
-      items: groupedItems.equipements || []
-    },
-    {
-      key: 'confort',
-      title: lang === 'fr' ? 'Confort & Propreté' : 'الراحة والنظافة',
-      icon: '✨',
-      items: groupedItems.confort || []
+  /**
+   * Téléverse la photo d'un cadrage précis (avant, intérieur, coffre…).
+   * Le `slotId` est mémorisé sur la photo pour que la vignette reprenne sa
+   * place à la réouverture de l'inspection.
+   */
+  const handleSlotUpload = async (file: File, slot: PhotoSlot) => {
+    setUploadingSlot(slot.id);
+    try {
+      const result = await uploadInspectionImage(file, undefined, slot.type);
+      if (result.success && result.url) {
+        setPhotos(prev => [
+          // Un cadrage ne contient qu'une photo : la nouvelle remplace l'ancienne.
+          ...prev.filter(p => p.slotId !== slot.id),
+          { url: result.url!, type: slot.type, slotId: slot.id, file },
+        ]);
+      } else {
+        alert(result.error || (lang === 'fr' ? 'Erreur lors du téléchargement' : 'خطأ في التحميل'));
+      }
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      alert(lang === 'fr' ? 'Erreur lors du téléchargement' : 'خطأ في التحميل');
+    } finally {
+      setUploadingSlot(null);
     }
-  ];
+  };
+
+  const inspectionCategories = [
+    { key: 'securite',    title: lang === 'fr' ? 'Sécurité' : 'الأمان',                items: groupedItems.securite || [] },
+    { key: 'equipements', title: lang === 'fr' ? 'Équipements' : 'المعدات',            items: groupedItems.equipements || [] },
+    { key: 'confort',     title: lang === 'fr' ? 'Confort & Propreté' : 'الراحة والنظافة', items: groupedItems.confort || [] },
+    { key: 'proprete',    title: lang === 'fr' ? 'Propreté' : 'النظافة',               items: groupedItems.proprete || [] },
+  ].filter(c => c.items.length > 0 || c.key !== 'proprete');
 
   // Update formData with inspection data
   useEffect(() => {
@@ -1766,150 +1831,42 @@ export const Step3DepartureInspection: React.FC<{
         </div>
       </div>
 
-      {/* Inspection Checklist */}
-      <div className="space-y-6">
-        <h4 className="text-xl font-black text-slate-900">
-          ✅ {lang === 'fr' ? 'Contrôle d\'État du Véhicule' : 'فحص حالة المركبة'}
+      {/* Contrôle d'état — composant PARTAGÉ avec les fenêtres
+          « Activer la location » et « Terminer la location », pour que la
+          checklist s'affiche exactement de la même façon partout. */}
+      <div className="space-y-5">
+        <h4 className="text-xl font-black" style={{ color: 'var(--color-text)' }}>
+          ✅ {lang === 'fr' ? "Contrôle d'État du Véhicule" : 'فحص حالة المركبة'}
         </h4>
 
-        {inspectionCategories.map((category) => (
-          <div key={category.key} className="bg-white rounded-2xl shadow-lg p-6 border border-slate-200">
-            <h5 className="text-lg font-black text-slate-900 mb-4 flex items-center gap-2">
-              {category.icon} {category.title}
-            </h5>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-              {category.items.map((item) => (
-                <div
-                  key={item.id}
-                  className={`flex items-center gap-3 p-3 border-2 rounded-lg transition-all ${
-                    checklistResponses[item.id]
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-red-300 bg-red-50'
-                  }`}
-                >
-                  <div
-                    onClick={() => toggleChecklistItem(item.id)}
-                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center cursor-pointer ${
-                      checklistResponses[item.id] ? 'border-green-500 bg-green-500' : 'border-red-300 bg-red-300'
-                    }`}
-                  >
-                    {checklistResponses[item.id] && <Check className="w-3 h-3 text-white" />}
-                  </div>
-                  <span className={`font-bold flex-1 ${checklistResponses[item.id] ? 'text-green-800' : 'text-red-800'}`}>
-                    {item.item_name}
-                  </span>
-                  <button
-                    onClick={() => removeChecklistItem(item.id)}
-                    className="text-red-500 hover:text-red-700 p-1"
-                    title={lang === 'fr' ? 'Supprimer cet élément' : 'حذف هذا العنصر'}
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {/* Add custom item */}
-            <div className="flex gap-2 mt-4">
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="securite">🛡️ Sécurité</option>
-                <option value="equipements">🔧 Équipements</option>
-                <option value="confort">✨ Confort</option>
-              </select>
-              <input
-                type="text"
-                value={newCustomItem}
-                onChange={(e) => setNewCustomItem(e.target.value)}
-                placeholder={lang === 'fr' ? 'Ajouter un élément personnalisé...' : 'إضافة عنصر مخصص...'}
-                className="flex-1 p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                onKeyPress={(e) => e.key === 'Enter' && addCustomChecklistItem()}
-              />
-              <button
-                onClick={addCustomChecklistItem}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        ))}
+        <InspectionChecklist
+          lang={lang}
+          categories={inspectionCategories}
+          responses={checklistResponses}
+          onToggle={toggleChecklistItem}
+          onRemoveItem={removeChecklistItem}
+          showAddItem
+          newItemValue={newCustomItem}
+          onNewItemChange={setNewCustomItem}
+          onAddItem={addCustomChecklistItem}
+          selectedCategory={selectedCategory}
+          onSelectedCategoryChange={setSelectedCategory}
+        />
       </div>
 
-      {/* Photo Upload */}
-      <div className="bg-orange-50 rounded-2xl p-6 border border-orange-200">
-        <h4 className="text-lg font-black text-orange-900 mb-4">
-          📸 {lang === 'fr' ? 'Photos d\'État Initial' : 'صور الحالة الأولية'}
-        </h4>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-          {/* Upload buttons */}
-          {[
-            { label: 'Extérieur Avant', type: 'exterior_front' },
-            { label: 'Intérieur', type: 'interior' },
-            { label: 'Extérieur Arrière', type: 'exterior_rear' },
-            { label: 'Autres', type: 'other' }
-          ].map((item) => (
-            <div key={item.type} className="relative">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => handlePhotoUpload(e, item.type)}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              />
-              <div className="aspect-square border-2 border-dashed border-orange-300 rounded-lg flex flex-col items-center justify-center hover:bg-orange-100 transition-colors">
-                <Upload className="w-8 h-8 text-orange-500 mb-2" />
-                <span className="text-sm text-orange-700 font-bold text-center">
-                  {lang === 'fr' ? item.label : (item.label === 'Extérieur Avant' ? 'الخارج الأمامي' : item.label === 'Intérieur' ? 'الداخل' : item.label === 'Extérieur Arrière' ? 'الخارج الخلفي' : 'أخرى')}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Display uploaded photos */}
-        {photos.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {photos.map((photo, index) => {
-              // Resolve possible stored path into absolute URL
-              const resolveUrl = (u?: string) => {
-                if (!u) return u;
-                if (u.startsWith('http')) return u;
-                const base = import.meta.env.VITE_SUPABASE_URL || '';
-                if (!base) return u;
-                // If it's already a storage path
-                if (u.startsWith('/')) return `${base}${u}`;
-                if (u.includes('/storage/v1')) return `${base}${u}`;
-                // If it already contains 'inspection' path, just prefix host
-                if (u.includes('inspection')) return `${base}/storage/v1/object/public/${u.replace(/^\/+/, '')}`;
-                // default: assume it's a filename stored in inspection bucket
-                return `${base}/storage/v1/object/public/inspection/${u}`;
-              };
-
-              const src = resolveUrl(photo.url);
-
-              return (
-                <div key={index} className="relative group">
-                  <img
-                    src={src}
-                    alt={`Photo ${index + 1}`}
-                    className="w-full aspect-square object-cover rounded-lg border border-orange-200"
-                  />
-                  <button
-                    onClick={() => removePhoto(index)}
-                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
+      {/* Photos d'état — grille de cadrages (composant partagé) */}
+      <div
+        className="rounded-2xl p-6"
+        style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
+      >
+        <InspectionPhotos
+          lang={lang}
+          photos={photos}
+          uploadingSlot={uploadingSlot}
+          onUpload={handleSlotUpload}
+          onRemove={(_photo, index) => removePhoto(index)}
+          title={lang === 'fr' ? "Photos d'état initial" : 'صور الحالة الأولية'}
+        />
       </div>
 
       {/* Signature Section */}
@@ -2363,6 +2320,31 @@ export const Step5AdditionalServices: React.FC<{
         setLoadingServices(true);
         const dbServices = await DatabaseService.getServices();
         setServices(dbServices);
+
+        // Les services marqués OBLIGATOIRES sont cochés d'office et ne
+        // peuvent pas être retirés (voir toggleService).
+        const mandatory = dbServices.filter((s: any) => s.isMandatory);
+        if (mandatory.length > 0) {
+          setFormData(prev => {
+            const current = prev.step5?.additionalServices || [];
+            const missing = mandatory
+              .filter((m: any) => !current.some((c: any) => c.id === m.id))
+              .map((m: any) => ({
+                id: m.id,
+                name: m.name,
+                description: m.description,
+                price: Number(m.price) || 0,
+                category: m.category || 'service',
+                selected: true,
+                isMandatory: true,
+              }));
+            if (missing.length === 0) return prev;
+            return {
+              ...prev,
+              step5: { ...prev.step5, additionalServices: [...current, ...missing] },
+            };
+          });
+        }
       } catch (err) {
         console.error('Error loading services:', err);
         setServices([]);
@@ -2457,6 +2439,12 @@ export const Step5AdditionalServices: React.FC<{
   const toggleService = (service: any) => {
     const currentServices = formData.step5?.additionalServices || [];
     const isSelected = currentServices.some(s => servicesEqual(service, s) || servicesEqual(s, service));
+
+    // Un service obligatoire ne se décoche pas.
+    const isMandatory =
+      service.isMandatory === true ||
+      services.some((s: any) => servicesEqual(s, service) && s.isMandatory);
+    if (isMandatory && isSelected) return;
 
     if (isSelected) {
       setFormData(prev => ({
@@ -2599,7 +2587,20 @@ export const Step5AdditionalServices: React.FC<{
 
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h4 className="font-bold text-lg text-slate-900">{service.name}</h4>
+                    <h4 className="font-bold text-lg text-slate-900 flex items-center gap-2 flex-wrap">
+                      {service.name}
+                      {service.isMandatory && (
+                        <span
+                          className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide"
+                          style={{ background: 'var(--color-gold)', color: '#0A0A0B' }}
+                          title={lang === 'fr'
+                            ? 'Service obligatoire — inclus automatiquement'
+                            : 'خدمة إلزامية — مُدرجة تلقائيًا'}
+                        >
+                          {lang === 'fr' ? 'Obligatoire' : 'إلزامي'}
+                        </span>
+                      )}
+                    </h4>
                     <p className="text-slate-600 text-sm mb-2">{service.description}</p>
                     <p className="font-bold text-green-700">{service.price.toLocaleString()} DA</p>
                   </div>
@@ -2906,6 +2907,8 @@ export const Step6FinalPricing: React.FC<{
   
   // Assurance Serenity states
   const [assuranceEnabled, setAssuranceEnabled] = useState(false);
+  // Timbre fiscal — barème par tranche de 100 DA (voir utils/timbre.ts)
+  const [timbreEnabled, setTimbreEnabled] = useState(false);
   const [assurancePercentage, setAssurancePercentage] = useState<number | ''>('');
   
   const hasInitialized = React.useRef(false);
@@ -2963,6 +2966,7 @@ export const Step6FinalPricing: React.FC<{
       
       // Initialize assurance fields
       setAssuranceEnabled((formData.step6 as any).assuranceEnabled || false);
+      setTimbreEnabled((formData.step6 as any).timbreEnabled || false);
       setAssurancePercentage((formData.step6 as any).assurancePercentage || '');
     }
   }, [(formData as any).id]); // Reinitialize when editing a different reservation
@@ -3034,7 +3038,10 @@ export const Step6FinalPricing: React.FC<{
   const assuranceAmount = assuranceEnabled && assurancePercentage !== '' 
     ? Math.round(totalPrice * (Number(assurancePercentage) / 100))
     : 0;
-  const finalTotal = totalPrice + assuranceAmount;
+  // Timbre fiscal : calculé sur le total assurance comprise.
+  const timbreAmount = timbreEnabled ? calcTimbre(totalPrice + assuranceAmount) : 0;
+  const timbreInfo = describeTimbre(totalPrice + assuranceAmount);
+  const finalTotal = totalPrice + assuranceAmount + timbreAmount;
 
   // Console logging for debugging
   React.useEffect(() => {
@@ -3069,6 +3076,9 @@ export const Step6FinalPricing: React.FC<{
         assuranceEnabled: assuranceEnabled,
         assurancePercentage: assurancePercentage,
         assuranceAmount: assuranceAmount,
+        // Timbre fiscal
+        timbreEnabled: timbreEnabled,
+        timbreAmount: timbreAmount,
         finalTotal: finalTotal,
         // Caution amount in DZD for database
         caution_amount_dzd: cautionCurrency === 'EUR' && euroAmount && euroRate 
@@ -3078,7 +3088,7 @@ export const Step6FinalPricing: React.FC<{
       deposit: deposit,
       totalPrice: totalPrice
     }));
-  }, [totalPrice, isManualTotal, manualTotal, tvaEnabled, tvaAmount, cautionEnabled, cautionCurrency, euroAmount, euroRate, assuranceEnabled, assurancePercentage, assuranceAmount, finalTotal, deposit, editedDeposit]);
+  }, [totalPrice, isManualTotal, manualTotal, tvaEnabled, tvaAmount, cautionEnabled, cautionCurrency, euroAmount, euroRate, assuranceEnabled, assurancePercentage, assuranceAmount, timbreEnabled, timbreAmount, finalTotal, deposit, editedDeposit]);
 
   return (
     <div className="space-y-8">
@@ -3698,7 +3708,7 @@ export const Step6FinalPricing: React.FC<{
                   {assuranceAmount > 0 && (
                     <div className="p-2 bg-purple-50 rounded border border-purple-200">
                       <p className="text-sm text-purple-700">
-                        {lang === 'fr' ? 'Montant Assurance:' : 'مبلغ التأمين:'} 
+                        {lang === 'fr' ? 'Montant Assurance:' : 'مبلغ التأمين:'}
                         <span className="font-bold ml-2">{assuranceAmount.toLocaleString()} DA</span>
                       </p>
                     </div>
@@ -3706,6 +3716,97 @@ export const Step6FinalPricing: React.FC<{
                 </div>
               )}
             </div>
+
+            {/* ── Timbre fiscal ─────────────────────────────────────────
+                Barème par tranche de 100 DA entamée :
+                  1 %   de 300 à 30 000 DA
+                  1,5 % de 30 001 à 100 000 DA
+                  2 %   au-delà de 100 000 DA
+                Le montant s'ajoute au total et figure sur le contrat. */}
+            <div className="border-t pt-3 mt-3" style={{ borderColor: 'var(--color-border-soft)' }}>
+              <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={timbreEnabled}
+                  onChange={e => setTimbreEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded"
+                  style={{ accentColor: 'var(--color-gold)' }}
+                />
+                <span className="font-bold" style={{ color: 'var(--color-gold)' }}>
+                  {lang === 'fr' ? '🧾 Timbre fiscal' : '🧾 الطابع الجبائي'}
+                </span>
+              </label>
+
+              {timbreEnabled ? (
+                <div className="ml-6 space-y-2">
+                  {timbreInfo.applicable ? (
+                    <>
+                      <div
+                        className="p-3 rounded-lg"
+                        style={{
+                          background: 'var(--color-gold-soft)',
+                          border: '1px solid var(--color-vel-border-gold)',
+                        }}
+                      >
+                        <div className="flex justify-between items-baseline gap-3">
+                          <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                            {lang === 'fr' ? 'Montant du timbre' : 'مبلغ الطابع'}
+                          </span>
+                          <span className="font-black text-lg" style={{ color: 'var(--color-gold)' }}>
+                            {timbreAmount.toLocaleString('fr-FR')} DA
+                          </span>
+                        </div>
+                        <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-dim)' }}>
+                          {timbreInfo.tranches} {lang === 'fr' ? 'tranches de 100 DA' : 'شريحة من 100 دج'}
+                          {' × '}{timbreInfo.tier?.perTranche} DA
+                          {' — '}{timbreInfo.tier?.ratePercent}%
+                        </p>
+                      </div>
+
+                      {/* Rappel du barème */}
+                      <div className="text-[11px] space-y-0.5" style={{ color: 'var(--color-text-dim)' }}>
+                        {TIMBRE_TIERS.map(t => (
+                          <p
+                            key={t.min}
+                            style={{
+                              color: timbreInfo.tier?.min === t.min
+                                ? 'var(--color-gold)' : 'var(--color-text-dim)',
+                              fontWeight: timbreInfo.tier?.min === t.min ? 700 : 400,
+                            }}
+                          >
+                            {t.max
+                              ? `${t.min.toLocaleString('fr-FR')} – ${t.max.toLocaleString('fr-FR')} DA`
+                              : `> ${(t.min - 1).toLocaleString('fr-FR')} DA`}
+                            {' : '}{t.label}
+                          </p>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      {lang === 'fr'
+                        ? 'Total inférieur à 300 DA — aucun timbre n\'est dû.'
+                        : 'المجموع أقل من 300 دج — لا يوجد طابع مستحق.'}
+                    </p>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            {/* Total général, timbre inclus */}
+            {(assuranceAmount > 0 || timbreAmount > 0) && (
+              <div
+                className="mt-3 pt-3 flex justify-between items-baseline"
+                style={{ borderTop: '2px solid var(--color-vel-border-gold)' }}
+              >
+                <span className="font-black" style={{ color: 'var(--color-text)' }}>
+                  {lang === 'fr' ? 'TOTAL GÉNÉRAL' : 'المجموع العام'}
+                </span>
+                <span className="font-black text-xl" style={{ color: 'var(--color-gold)' }}>
+                  {finalTotal.toLocaleString('fr-FR')} DA
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Right Column - Duration & Payment */}
