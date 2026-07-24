@@ -153,10 +153,10 @@ export const WebsiteOrders: React.FC<WebsiteOrdersProps> = ({ lang, onOrdersChan
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-black text-slate-900">
-            🛒 {lang === 'fr' ? 'Commandes Website' : 'طلبات الموقع'}
+            🛒 {lang === 'fr' ? 'Website Réservations' : 'حجوزات الموقع'}
           </h1>
           <p className="text-slate-600 mt-1">
-            {lang === 'fr' ? 'Gérer les commandes reçues depuis le site web' : 'إدارة الطلبات المستلمة من الموقع'}
+            {lang === 'fr' ? 'Gérer les réservations reçues depuis le site web' : 'إدارة الحجوزات المستلمة من الموقع'}
           </p>
         </div>
 

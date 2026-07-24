@@ -29,7 +29,7 @@ export const getAgencyName = (settings?: { name?: string | null } | null): strin
 export const SIDEBAR_ITEMS: SidebarItem[] = [
   { id: 'dashboard', label: { fr: 'Tableau de bord', ar: 'لوحة القيادة' }, icon: '📊' },
   { id: 'planner', label: { fr: 'Planificateur', ar: 'المخطط' }, icon: '📅' },
-  { id: 'web-orders', label: { fr: 'Website commandes', ar: 'طلبات الموقع' }, icon: '🛒' },
+  { id: 'web-orders', label: { fr: 'Website réservations', ar: 'حجوزات الموقع' }, icon: '🛒' },
   { id: 'reservations', label: { fr: 'Contrats', ar: 'العقود' }, icon: '🧾' },
   { id: 'protection-services', label: { fr: 'Protection & Services', ar: 'الحماية والخدمات' }, icon: '🛡️' },
   { id: 'vehicles', label: { fr: 'Véhicules', ar: 'المركبات' }, icon: '🚗' },
@@ -38,7 +38,6 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
   { id: 'entreprises', label: { fr: 'Entreprises', ar: 'الشركات' }, icon: '🏛️' },
   { id: 'agencies', label: { fr: 'Agences', ar: 'الوكالات' }, icon: '🏢' },
   { id: 'team', label: { fr: 'Équipe', ar: 'الفريق' }, icon: '🤝' },
-  { id: 'personalization', label: { fr: 'Personalisation', ar: 'التخصيص' }, icon: '🎨' },
   { id: 'expenses', label: { fr: 'Dépenses', ar: 'المصاريف' }, icon: '📉' },
   { id: 'web-mgmt', label: { fr: 'Website management', ar: 'إدارة الموقع' }, icon: '🌐' },
   { id: 'car-gains', label: { fr: 'Bénéfices par voiture', ar: 'أرباح كل سيارة' }, icon: '💰' },
