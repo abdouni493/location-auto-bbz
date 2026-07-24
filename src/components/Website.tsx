@@ -11,7 +11,7 @@ import { WizardSearchCriteria } from './website/wizard/WizardContext';
 import { CurrencyProvider } from './website/CurrencyContext';
 import { CurrencySwitcher } from './website/CurrencySwitcher';
 import { ThemeToggle } from './ThemeToggle';
-import { SITE_NAME } from '../constants';
+import { getAgencyName } from '../constants';
 
 interface WebsiteProps {
   lang: Language;
@@ -37,6 +37,8 @@ export const Website: React.FC<WebsiteProps> = ({
 }) => {
   const [currentPage, setCurrentPage] = useState<'home' | 'offers' | 'special' | 'contacts' | 'orders'>('home');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Nom de l'agence issu des paramètres du site (repli neutre si non configuré).
+  const agencyName = getAgencyName(websiteSettings);
   const [selectedCar, setSelectedCar] = useState<Car | null>(null);
   // Recherche de disponibilité lancée depuis le landing (agences + période)
   const [searchCriteria, setSearchCriteria] = useState<WizardSearchCriteria | null>(null);
@@ -89,14 +91,14 @@ export const Website: React.FC<WebsiteProps> = ({
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-vel-void text-xl font-black"
                     style={{ background: 'linear-gradient(135deg, var(--color-gold-light), var(--color-gold))', fontFamily: 'var(--font-display)' }}>
-                    M
+                    {agencyName.charAt(0).toUpperCase()}
                   </div>
                 )}
               </div>
               <div className="hidden sm:block">
                 <h1 className="font-black text-xl text-vel-ink transition-colors"
                   style={{ fontFamily: 'var(--font-display)' }}>
-                  {SITE_NAME}
+                  {agencyName}
                 </h1>
                 <p className="text-[10px] font-bold tracking-[0.2em] uppercase"
                   style={{ color: 'var(--color-gold)', fontFamily: 'var(--font-display)' }}>
@@ -256,7 +258,7 @@ export const Website: React.FC<WebsiteProps> = ({
             <div>
               <h3 className="font-black text-2xl text-vel-ink mb-2"
                 style={{ fontFamily: 'var(--font-display)' }}>
-                {SITE_NAME}
+                {agencyName}
               </h3>
               <div className="w-12 h-0.5 mb-4" style={{ background: 'var(--color-gold)', boxShadow: '0 0 10px var(--color-gold-glow)' }} />
               <p className="text-vel-muted text-sm leading-relaxed">{websiteSettings?.description}</p>
@@ -346,13 +348,13 @@ export const Website: React.FC<WebsiteProps> = ({
           <div className="mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4"
             style={{ borderTop: '1px solid var(--color-border)' }}>
             <p className="text-vel-dim text-sm">
-              © {new Date().getFullYear()} {SITE_NAME}.{' '}
+              © {new Date().getFullYear()} {agencyName}.{' '}
               <span className="text-vel-muted">{{ fr: 'Tous droits réservés.', ar: 'جميع الحقوق محفوظة.' }[lang]}</span>
             </p>
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--color-gold)' }} />
               <span className="text-vel-dim text-xs tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>
-                POWERED BY {SITE_NAME}
+                {agencyName}
               </span>
             </div>
           </div>

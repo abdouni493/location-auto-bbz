@@ -27,6 +27,11 @@ export const getReservationAlert = (
   // départ imminent…) tant que l'agence ne les a pas acceptées.
   if (reservation.status === 'website_reservation') return null;
 
+  // Garde-fou : une réservation dont le client, la voiture ou les dates n'ont
+  // pas pu être chargés (relation supprimée, données partielles…) ne doit pas
+  // faire planter tout le tableau de bord. On l'ignore simplement.
+  if (!reservation.client || !reservation.car || !reservation.step1) return null;
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 

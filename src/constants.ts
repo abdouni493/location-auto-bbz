@@ -10,8 +10,21 @@ import { SidebarItem, Agency, Car } from './types';
  */
 export const HERO_SPLINE_SCENE_URL = '';
 
-/** Nom commercial affiché sur le site public (navbar, footer, pages vitrine). */
-export const SITE_NAME = 'MHD AUTO';
+/**
+ * Nom commercial de repli, utilisé UNIQUEMENT quand aucune agence n'a encore
+ * été configurée dans les paramètres du site. Dès qu'un nom est enregistré
+ * (ConfigPage → paramètres du site), c'est lui qui s'affiche partout.
+ */
+export const SITE_NAME = 'Location Auto';
+
+/**
+ * Nom d'agence à afficher sur le site public : celui des paramètres si présent,
+ * sinon le repli neutre ci-dessus. Jamais de marque codée en dur.
+ */
+export const getAgencyName = (settings?: { name?: string | null } | null): string => {
+  const raw = settings?.name?.trim();
+  return raw && raw.length > 0 ? raw : SITE_NAME;
+};
 
 export const SIDEBAR_ITEMS: SidebarItem[] = [
   { id: 'dashboard', label: { fr: 'Tableau de bord', ar: 'لوحة القيادة' }, icon: '📊' },

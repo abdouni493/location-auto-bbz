@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Language, WebsiteSettings } from '../../types';
 import { motion } from 'motion/react';
 import { CheckCircle, Car, Home, PhoneCall } from 'lucide-react';
-import { SITE_NAME } from '../../constants';
+import { getAgencyName } from '../../constants';
 
 interface ThankYouPageProps {
   lang: Language;
@@ -18,7 +18,7 @@ export const ThankYouPage: React.FC<ThankYouPageProps> = ({ lang, onBackHome, we
     return () => clearTimeout(timer);
   }, [onBackHome]);
 
-  const agencyName = SITE_NAME;
+  const agencyName = getAgencyName(websiteSettings);
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4 z-50 overflow-hidden"

@@ -2,7 +2,7 @@ import React from 'react';
 import { Language } from '../../types';
 import { motion } from 'motion/react';
 import { Phone, Mail, MapPin, ExternalLink } from 'lucide-react';
-import { SITE_NAME } from '../../constants';
+import { getAgencyName } from '../../constants';
 
 interface ContactsWebsiteProps {
   lang: Language;
@@ -107,7 +107,7 @@ export const ContactsWebsite: React.FC<ContactsWebsiteProps> = ({
           >
             <div>
               <h2 className="font-black text-3xl text-vel-ink mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-                {SITE_NAME}
+                {getAgencyName(websiteSettings)}
               </h2>
               <div className="w-10 h-0.5 mb-4"
                 style={{ background: 'var(--color-gold)', boxShadow: '0 0 8px rgba(212,175,55,0.35)' }} />
