@@ -1,7 +1,7 @@
 import React from 'react';
 import { Language, Car } from '../../types';
 import { motion } from 'motion/react';
-import { X, Fuel, Settings, Users, DoorOpen, Palette, Gauge } from 'lucide-react';
+import { X, Fuel, Settings, Users, DoorOpen, Palette } from 'lucide-react';
 
 interface CarDetailsModalProps {
   lang: Language;
@@ -11,13 +11,13 @@ interface CarDetailsModalProps {
 }
 
 export const CarDetailsModal: React.FC<CarDetailsModalProps> = ({ lang, car, onClose, onOrder }) => {
+  // Le kilométrage reste une donnée interne à l'agence : il n'apparaît pas ici.
   const specs = [
     { icon: Fuel, label: { fr: 'Énergie', ar: 'الوقود' }, value: car.energy },
     { icon: Settings, label: { fr: 'Boîte', ar: 'علبة التروس' }, value: car.transmission },
     { icon: Users, label: { fr: 'Places', ar: 'مقاعد' }, value: `${car.seats} ${lang === 'fr' ? 'places' : 'مقاعد'}` },
     { icon: DoorOpen, label: { fr: 'Portes', ar: 'أبواب' }, value: `${car.doors} ${lang === 'fr' ? 'portes' : 'أبواب'}` },
     { icon: Palette, label: { fr: 'Couleur', ar: 'اللون' }, value: car.color },
-    { icon: Gauge, label: { fr: 'Kilométrage', ar: 'الكيلومترات' }, value: `${car.mileage.toLocaleString()} km` },
   ];
 
   return (

@@ -7,6 +7,7 @@ import { InspectionChecklist } from './inspection/InspectionChecklist';
 import { InspectionPhotos } from './inspection/InspectionPhotos';
 import { MileagePolicyPanel } from './inspection/MileagePolicyPanel';
 import { TerminationPaymentPanel } from './inspection/TerminationPaymentPanel';
+import { MandatoryServicesPanel, type MandatoryServiceRow } from './inspection/MandatoryServicesPanel';
 import { ReturnAlerts, computeSuggestedFees } from './inspection/ReturnAlerts';
 import { SettingsService, DEFAULT_MILEAGE_POLICY, mileageLimitFor, missingFuelLevels } from '../services/settingsService';
 import { purgeInspectionImages } from '../services/inspectionCleanup';
@@ -1507,6 +1508,56 @@ export const CompletionModal: React.FC<{ lang: Language; reservation: Reservatio
   const [payNow, setPayNow] = useState<number | ''>('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
 
+  // ── Services obligatoires facturés sur cette location ──
+  // Les lignes `reservation_services` ne portent pas le drapeau « obligatoire » :
+  // on le retrouve en croisant leur nom avec le catalogue des services.
+  const [mandatoryServices, setMandatoryServices] = useState<MandatoryServiceRow[]>([]);
+  const [loadingMandatory, setLoadingMandatory] = useState(true);
+  /** Services décochés par l'agent : non fournis, donc rendus au client. */
+  const [refundedServiceIds, setRefundedServiceIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadMandatory = async () => {
+      try {
+        setLoadingMandatory(true);
+        const catalogue = await DatabaseService.getServices();
+        const mandatoryNames = new Set(
+          catalogue
+            .filter((s: any) => s.isMandatory)
+            .map((s: any) => String(s.name || '').trim().toLowerCase())
+        );
+
+        const rows: MandatoryServiceRow[] = ((reservation.additionalServices as any[]) || [])
+          .map(s => ({
+            id: String(s.id ?? ''),
+            name: String(s.service_name || s.name || '').trim(),
+            price: Math.round(Number(s.price) || 0),
+          }))
+          .filter(s => s.id && s.name && mandatoryNames.has(s.name.toLowerCase()));
+
+        if (!cancelled) setMandatoryServices(rows);
+      } catch (err) {
+        console.error('Erreur de chargement des services obligatoires:', err);
+        if (!cancelled) setMandatoryServices([]);
+      } finally {
+        if (!cancelled) setLoadingMandatory(false);
+      }
+    };
+    loadMandatory();
+    return () => { cancelled = true; };
+  }, [reservation.id, reservation.additionalServices]);
+
+  const toggleMandatoryService = (id: string) =>
+    setRefundedServiceIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+
+  /** Montant des services obligatoires rendus au client. */
+  const servicesCredit = mandatoryServices
+    .filter(s => refundedServiceIds.includes(s.id))
+    .reduce((sum, s) => sum + s.price, 0);
+
   const totalDistance = returnMileage && reservation.departureInspection?.mileage
     ? parseInt(returnMileage) - reservation.departureInspection.mileage
     : 0;
@@ -1640,9 +1691,21 @@ export const CompletionModal: React.FC<{ lang: Language; reservation: Reservatio
 
       console.log('🟢 Car info updated successfully');
 
+      // ── Services obligatoires non fournis : la ligne est retirée de la
+      // réservation et son montant déduit du total (l'argent revient au client).
+      const refunded = mandatoryServices.filter(s => refundedServiceIds.includes(s.id));
+      for (const service of refunded) {
+        try {
+          await ReservationsService.deleteService(service.id);
+        } catch (svcErr) {
+          console.error('❌ Retrait du service obligatoire impossible:', service.name, svcErr);
+        }
+      }
+
       // ── Règlement : enregistre l'encaissement du jour et met à jour la dette ──
       const paidNow = payNow === '' ? 0 : Number(payNow) || 0;
-      const totalDue = reservation.totalPrice + totalFees;
+      const newTotalPrice = Math.max(0, reservation.totalPrice - servicesCredit);
+      const totalDue = newTotalPrice + totalFees;
       const totalPaidAfter = alreadyPaid + paidNow;
       const remainingAfter = Math.max(0, totalDue - totalPaidAfter);
 
@@ -1668,6 +1731,8 @@ export const CompletionModal: React.FC<{ lang: Language; reservation: Reservatio
         .update({
           advance_payment: totalPaidAfter,
           remaining_payment: remainingAfter,
+          // Le total baisse du montant des services obligatoires rendus.
+          total_price: newTotalPrice,
           additional_fees: totalFees,
           excess_mileage_km: suggested.excessKm,
           excess_mileage_fee: parseFloat(excessMileage) || 0,
@@ -1712,6 +1777,9 @@ export const CompletionModal: React.FC<{ lang: Language; reservation: Reservatio
         excessMileage: parseFloat(excessMileage) || 0,
         missingFuel: parseFloat(missingFuel) || 0,
         additionalFees: totalFees,
+        totalPrice: newTotalPrice,
+        additionalServices: ((reservation.additionalServices as any[]) || [])
+          .filter(s => !refundedServiceIds.includes(String(s.id ?? ''))),
         advancePayment: totalPaidAfter,
         remainingPayment: remainingAfter,
         notes: notes
@@ -1975,11 +2043,21 @@ export const CompletionModal: React.FC<{ lang: Language; reservation: Reservatio
             fuelFee={parseFloat(missingFuel) || 0}
           />
 
+          {/* Services obligatoires : décocher ceux qui n'ont pas été fournis */}
+          <MandatoryServicesPanel
+            lang={lang}
+            services={mandatoryServices}
+            loading={loadingMandatory}
+            refundedIds={refundedServiceIds}
+            onToggle={toggleMandatoryService}
+          />
+
           {/* Bilan financier : total, frais, déjà payé, encaissement, reste */}
           <TerminationPaymentPanel
             lang={lang}
             baseTotal={reservation.totalPrice}
             extraFees={totalFees}
+            serviceCredits={servicesCredit}
             alreadyPaid={alreadyPaid}
             payNow={payNow}
             onPayNowChange={setPayNow}

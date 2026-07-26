@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Language, ProtectionAssurance, ProtectionAssuranceItem } from '../types';
 import { DatabaseService } from '../services/DatabaseService';
+import { SERVICE_CATEGORIES } from '../constants';
 
 interface ProtectionServicesPageProps {
   lang: Language;
@@ -14,13 +15,6 @@ type ViewMode = 'assurances' | 'services';
 
 // Traductions courtes
 const t = (lang: Language, fr: string, ar: string) => (lang === 'fr' ? fr : ar);
-
-const SERVICE_CATEGORIES = [
-  { value: 'service', fr: 'Service', ar: 'خدمة', icon: '🛎️' },
-  { value: 'decoration', fr: 'Décoration', ar: 'زينة', icon: '🎀' },
-  { value: 'equipment', fr: 'Équipement', ar: 'معدات', icon: '🧰' },
-  { value: 'insurance', fr: 'Assurance', ar: 'تأمين', icon: '🛡️' },
-];
 
 export const ProtectionServicesPage: React.FC<ProtectionServicesPageProps> = ({ lang }) => {
   const [view, setView] = useState<ViewMode>('assurances');

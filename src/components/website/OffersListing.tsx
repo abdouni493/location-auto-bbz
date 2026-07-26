@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Language, Car, SpecialOffer } from '../../types';
 import { motion, useReducedMotion } from 'motion/react';
-import { Fuel, Settings, Users, DoorOpen, Gauge } from 'lucide-react';
+import { Fuel, Settings, Users, DoorOpen } from 'lucide-react';
 import { CarDetailsModal } from './CarDetailsModal';
 import { getCurrentSpecialOfferForCar } from '../../utils/specialOffers';
 import { CarPriceBlock } from './CarPriceBlock';
@@ -74,12 +74,13 @@ export const OffersListing: React.FC<OffersListingProps> = ({ lang, cars, specia
         <div className="grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
           {cars.map((car, index) => {
             const promo = getCurrentSpecialOfferForCar(car.id, specialOffers);
+            // Le kilométrage n'est jamais montré au public : il ne dit rien au
+            // client sur la location et vieillit mal entre deux retours.
             const specs = [
               { icon: Fuel, value: car.energy },
               { icon: Settings, value: car.transmission },
               { icon: Users, value: `${car.seats}` },
               { icon: DoorOpen, value: `${car.doors}` },
-              { icon: Gauge, value: `${(car.mileage / 1000).toFixed(0)}k km` },
             ];
             return (
               <motion.div

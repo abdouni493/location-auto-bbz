@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Car, Rental, Language, Expense, ReservationDetails } from '../types';
+import { Car, Rental, Language, Expense, ReservationDetails, CarCurrencyConfig } from '../types';
 import { CarCard } from './CarCard';
 import { CarModal } from './CarModal';
+import { CurrencyRatesModal } from './CurrencyRatesModal';
 import { CarDetailsModal } from './CarDetailsModal';
 import { ExpenseModal } from './ExpenseModal';
 import { HistoryModal } from './HistoryModal';
 import { CarReportModal } from './CarReportModal';
 import { ConfirmModal } from './ConfirmModal';
-import { Plus, Search, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, Search, Loader2, RefreshCw, Globe } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getCars, addCar, updateCar, deleteCar, AddCarData } from '../services/carService';
+import { parseCurrencyConfig } from '../utils/currency';
 import { addVehicleExpense, getVehicleExpenses } from '../services/expenseService';
 import { ReservationsService } from '../services/ReservationsService';
 import { DatabaseService } from '../services/DatabaseService';
@@ -87,6 +89,7 @@ export const CarsPage: React.FC<CarsPageProps> = ({ lang, isAuthLoading = false,
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [selectedCar, setSelectedCar] = useState<Car | null>(null);
   const [carToDelete, setCarToDelete] = useState<string | null>(null);
+  const [isCurrencyModalOpen, setIsCurrencyModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [reportExpenses, setReportExpenses] = useState<Expense[]>([]);
   const [reportReservations, setReportReservations] = useState<ReservationDetails[]>([]);
@@ -119,6 +122,13 @@ export const CarsPage: React.FC<CarsPageProps> = ({ lang, isAuthLoading = false,
           status: dbCar.status === 'maintenance' ? 'maintenance' : 'disponible',
           fuelLevel: dbCar.fuel_level || 'full',
           isHiddenFromSite: dbCar.is_hidden_from_site === true,
+          // Propriétaire et devises : sans ça, rouvrir une fiche véhicule
+          // effaçait sa configuration (part de l'agence, tarifs en devises).
+          ownerType: (dbCar as any).owner_type === 'third_party' ? 'third_party' : 'personal',
+          ownerName: (dbCar as any).owner_name || undefined,
+          ownerPhone: (dbCar as any).owner_phone || undefined,
+          agencyDailyShare: Number((dbCar as any).agency_daily_share) || 0,
+          currencyConfig: parseCurrencyConfig((dbCar as any).currency_config),
         }));
         setCars(mappedCars);
       }
@@ -282,6 +292,15 @@ export const CarsPage: React.FC<CarsPageProps> = ({ lang, isAuthLoading = false,
     }
   };
 
+  /**
+   * Le taux de change d'une devise vient de changer : on reflète immédiatement
+   * les nouveaux tarifs sur les fiches déjà chargées (la base, elle, a été
+   * mise à jour par la fenêtre des taux).
+   */
+  const handleRatesApplied = (configs: Record<string, CarCurrencyConfig>) => {
+    setCars(prev => prev.map(c => (configs[c.id] ? { ...c, currencyConfig: configs[c.id] } : c)));
+  };
+
   const handleDeleteCar = async (id: string) => {
     setCarToDelete(id);
     setIsConfirmModalOpen(true);
@@ -422,6 +441,18 @@ export const CarsPage: React.FC<CarsPageProps> = ({ lang, isAuthLoading = false,
             />
           </div>
           <button
+            onClick={() => setIsCurrencyModalOpen(true)}
+            className="btn-saas-secondary px-6 py-3.5 group w-full sm:w-auto justify-center"
+            title={lang === 'fr'
+              ? 'Modifier les taux de change et recalculer tout le parc'
+              : 'تعديل أسعار الصرف وإعادة حساب كل الأسطول'}
+          >
+            <Globe size={20} className="group-hover:rotate-12 transition-transform duration-500" />
+            <span className="font-bold uppercase tracking-widest text-xs">
+              {lang === 'fr' ? 'Taux de change' : 'أسعار الصرف'}
+            </span>
+          </button>
+          <button
             onClick={loadCarsData}
             className="btn-saas-secondary px-6 py-3.5 group w-full sm:w-auto justify-center"
             title={lang === 'fr' ? 'Actualiser' : 'تحديث'}
@@ -515,6 +546,14 @@ export const CarsPage: React.FC<CarsPageProps> = ({ lang, isAuthLoading = false,
         onDelete={handleDeleteCar}
         car={selectedCar || undefined}
         lang={lang}
+      />
+
+      <CurrencyRatesModal
+        isOpen={isCurrencyModalOpen}
+        onClose={() => setIsCurrencyModalOpen(false)}
+        lang={lang}
+        cars={cars}
+        onApplied={handleRatesApplied}
       />
 
       <ConfirmModal

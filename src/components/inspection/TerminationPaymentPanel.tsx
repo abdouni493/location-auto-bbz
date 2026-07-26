@@ -8,6 +8,11 @@ interface Props {
   baseTotal: number;
   /** Frais supplémentaires (kilométrage + carburant). */
   extraFees: number;
+  /**
+   * Services obligatoires facturés mais non fournis : leur montant est rendu
+   * au client, donc déduit du total dû.
+   */
+  serviceCredits?: number;
   /** Déjà encaissé avant cette clôture. */
   alreadyPaid: number;
   /** Montant encaissé À L'INSTANT (saisi par l'agent). */
@@ -27,13 +32,14 @@ const money = (n: number) => `${Math.round(Number(n) || 0).toLocaleString('fr-FR
  * l'agent voie immédiatement s'il solde le dossier ou non.
  */
 export const TerminationPaymentPanel: React.FC<Props> = ({
-  lang, baseTotal, extraFees, alreadyPaid,
+  lang, baseTotal, extraFees, serviceCredits = 0, alreadyPaid,
   payNow, onPayNowChange, paymentMethod, onPaymentMethodChange,
 }) => {
   const isFr = lang === 'fr';
   const T = (fr: string, ar: string) => (isFr ? fr : ar);
 
-  const totalDue = baseTotal + extraFees;
+  const credits = Math.max(0, Number(serviceCredits) || 0);
+  const totalDue = Math.max(0, baseTotal + extraFees - credits);
   const paidNow = payNow === '' ? 0 : Number(payNow) || 0;
   const remaining = Math.max(0, totalDue - alreadyPaid - paidNow);
   const isSettled = remaining <= 0;
@@ -74,6 +80,13 @@ export const TerminationPaymentPanel: React.FC<Props> = ({
 
         {extraFees > 0 &&
           row(T('Frais supplémentaires', 'رسوم إضافية'), `+ ${money(extraFees)}`, 'var(--color-act-warning)')}
+
+        {credits > 0 &&
+          row(
+            T('Services obligatoires rendus', 'خدمات إلزامية مُعادة'),
+            `− ${money(credits)}`,
+            'var(--color-act-success)'
+          )}
 
         <div style={{ borderTop: '1px solid var(--color-border-soft)' }}>
           {row(T('Total à payer', 'الإجمالي المستحق'), money(totalDue), 'var(--color-gold)', true)}

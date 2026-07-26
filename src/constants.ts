@@ -45,6 +45,18 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
   { id: 'config', label: { fr: 'Configuration', ar: 'الإعدادات' }, icon: '🛠️' },
 ];
 
+/**
+ * Catégories d'un service supplémentaire.
+ * Partagées par l'écran « Protection & Services » et l'étape « Services » du
+ * formulaire de réservation : les deux formulaires de création sont identiques.
+ */
+export const SERVICE_CATEGORIES = [
+  { value: 'service', fr: 'Service', ar: 'خدمة', icon: '🛎️' },
+  { value: 'decoration', fr: 'Décoration', ar: 'زينة', icon: '🎀' },
+  { value: 'equipment', fr: 'Équipement', ar: 'معدات', icon: '🧰' },
+  { value: 'insurance', fr: 'Assurance', ar: 'تأمين', icon: '🛡️' },
+];
+
 // Agencies data
 export const AGENCIES: Agency[] = [
   {

@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Language, ReservationDetails, Client, Car, VehicleInspection, Payment, AdditionalService, ProtectionAssurance } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, ArrowRight, Calendar, Clock, MapPin, Car as CarIcon, User, CreditCard, CheckCircle, Plus, Search, X, Camera, Fuel, AlertTriangle, Check, Upload, PenTool } from 'lucide-react';
-import { AGENCIES, CAR_IMAGES } from '../constants';
+import { ArrowLeft, ArrowRight, Calendar, Clock, MapPin, Car as CarIcon, User, CreditCard, CheckCircle, Plus, Search, X, Camera, Fuel, AlertTriangle, Check, Upload, PenTool, ConciergeBell, Loader2 } from 'lucide-react';
+import { AGENCIES, CAR_IMAGES, SERVICE_CATEGORIES } from '../constants';
 import { DatabaseService } from '../services/DatabaseService';
 import { ReservationsService } from '../services/ReservationsService';
 import { uploadInspectionImage } from '../services/uploadInspectionImage';
@@ -148,6 +148,10 @@ interface CreateReservationFormProps {
   onBack: () => void;
   inspectionMode?: boolean;
   initialData?: Partial<ReservationDetails>;
+  /**
+   * @deprecated Le statut à la création est décidé par l'étape « Inspection
+   * Départ » : renseignée → `confirmed`, laissée intacte → `pending`.
+   */
   defaultStatus?: 'pending' | 'confirmed' | 'active' | 'completed' | 'cancelled';
   user?: any;
   // Alternative step order:
@@ -307,6 +311,20 @@ export const CreateReservationForm: React.FC<CreateReservationFormProps> = ({ la
     }
   };
 
+  /**
+   * L'étape « Inspection Départ » a-t-elle été RENSEIGNÉE ?
+   *
+   * L'étape elle-même (Step3DepartureInspection) pose le drapeau
+   * `step3.inspectionTouched` dès que l'agent saisit quelque chose
+   * (kilométrage, carburant, checklist, photos, notes, signature). Le
+   * formulaire parent ne peut pas interroger l'état interne de l'étape : il lit
+   * ce drapeau — c'est lui qui décide du statut à la création.
+   */
+  const isInspectionFilled = (): boolean => {
+    const step3: any = (formData as any).step3;
+    return Boolean(step3?.inspectionTouched && step3?.departureInspection);
+  };
+
   const handleSubmit = async () => {
     try {
       // Find agency IDs
@@ -427,7 +445,7 @@ export const CreateReservationForm: React.FC<CreateReservationFormProps> = ({ la
             // saisi quoi que ce soit (kilométrage, carburant, checklist, photos,
             // notes, signature), la location est prête et la réservation est
             // créée CONFIRMÉE. Sinon elle reste en attente.
-            status: hasInspectionInput() ? 'confirmed' : 'pending',
+            status: isInspectionFilled() ? 'confirmed' : 'pending',
             notes: formData.step6?.notes || '',
             // Caution and Assurance fields
             cautionAmountDzd: (formData.step6 as any)?.caution_amount_dzd || formData.step2?.selectedCar?.deposit || 0,
@@ -509,9 +527,10 @@ export const CreateReservationForm: React.FC<CreateReservationFormProps> = ({ la
               await DatabaseService.upsertInspectionResponses(responses);
             }
 
-            // Update car mileage
-            if (inspection.mileage && inspection.mileage > 0) {
-              await DatabaseService.updateCar(formData.step2.selectedCar.id, {
+            // Update car mileage — `carId` est déjà résolu (mode inspection
+            // compris) ; formData.step2 peut être vide dans ce mode.
+            if (inspection.mileage && inspection.mileage > 0 && carId) {
+              await DatabaseService.updateCar(carId, {
                 mileage: inspection.mileage
               });
             }
@@ -545,9 +564,10 @@ export const CreateReservationForm: React.FC<CreateReservationFormProps> = ({ la
               await DatabaseService.upsertInspectionResponses(responses);
             }
 
-            // Update car mileage
-            if (inspection.mileage && inspection.mileage > 0) {
-              await DatabaseService.updateCar(formData.step2.selectedCar.id, {
+            // Update car mileage — `carId` est déjà résolu (mode inspection
+            // compris) ; formData.step2 peut être vide dans ce mode.
+            if (inspection.mileage && inspection.mileage > 0 && carId) {
+              await DatabaseService.updateCar(carId, {
                 mileage: inspection.mileage
               });
             }
@@ -1464,6 +1484,9 @@ export const Step3DepartureInspection: React.FC<{
     const typedMileage = String(mileage ?? '').trim();
     // Le kilométrage ne compte que s'il DIFFÈRE de la valeur pré-remplie.
     const mileageTouched = Boolean(typedMileage) && typedMileage !== initialMileageRef.current;
+    // La checklist s'initialise à « faux » pour TOUS les items dès son
+    // chargement : seule une case réellement cochée signale une saisie.
+    const checklistTouched = Object.values(checklistResponses).some(Boolean);
 
     return Boolean(
       mileageTouched ||
@@ -1471,7 +1494,7 @@ export const Step3DepartureInspection: React.FC<{
       String(notes ?? '').trim() ||
       signature ||
       photos.length > 0 ||
-      Object.keys(checklistResponses).length > 0
+      checklistTouched
     );
   };
 
@@ -1495,6 +1518,10 @@ export const Step3DepartureInspection: React.FC<{
     setFormData(prev => ({
       ...prev,
       step3: {
+        ...prev.step3,
+        // Drapeau lu par le formulaire parent : l'étape a été renseignée, la
+        // réservation sera donc créée CONFIRMÉE (sinon elle reste en attente).
+        inspectionTouched: true,
         departureInspection: {
           id: prev.step3?.departureInspection?.id || `inspection_${Date.now()}`,
           reservationId: prev.id || '',
@@ -1630,8 +1657,12 @@ export const Step3DepartureInspection: React.FC<{
   ].filter(c => c.items.length > 0 || c.key !== 'proprete');
 
   // Update formData with inspection data
+  // Ne s'exécute QUE si l'agent a réellement rempli l'étape : sans ça, le
+  // kilométrage pré-rempli et l'agence de départ suffiraient à fabriquer une
+  // inspection fantôme — et la réservation partirait en « confirmée » alors que
+  // personne n'a touché à l'étape.
   useEffect(() => {
-    if (mileage && inspectionLocation) {
+    if (mileage && inspectionLocation && hasInspectionInput()) {
       const inspectionData: VehicleInspection = {
         id: `inspection_${Date.now()}`,
         reservationId: '',
@@ -1659,6 +1690,7 @@ export const Step3DepartureInspection: React.FC<{
         ...prev,
         step3: {
           ...prev.step3,
+          inspectionTouched: true,
           departureInspection: inspectionData
         }
       }));
@@ -2308,8 +2340,13 @@ export const Step5AdditionalServices: React.FC<{
   const [loadingDrivers, setLoadingDrivers] = useState(false);
   const [selectedDriver, setSelectedDriver] = useState<any>(null);
   const [driverCaution, setDriverCaution] = useState(0);
-  const [newService, setNewService] = useState({ name: '', price: 0, description: '', category: 'service' });
+  // Création d'un service — mêmes champs que l'écran « Protection & Services »,
+  // option « obligatoire » comprise.
+  const [newService, setNewService] = useState<{
+    name: string; price: number | ''; description: string; category: string; isMandatory: boolean;
+  }>({ name: '', price: '', description: '', category: 'service', isMandatory: false });
   const [showNewServiceForm, setShowNewServiceForm] = useState(false);
+  const [savingService, setSavingService] = useState(false);
   const [showDriverList, setShowDriverList] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ show: boolean; serviceId: string | null; serviceName: string }>({ show: false, serviceId: null, serviceName: '' });
 
@@ -2469,29 +2506,38 @@ export const Step5AdditionalServices: React.FC<{
   };
 
   const createNewService = async () => {
-    if (newService.name && newService.price > 0) {
-      try {
-        const created = await DatabaseService.createService({
-          category: newService.category,
-          name: newService.name,
-          description: newService.description,
-          price: newService.price,
-        });
+    const name = newService.name.trim();
+    const price = newService.price === '' ? 0 : Number(newService.price);
+    if (!name) {
+      alert(lang === 'fr' ? 'Veuillez saisir un nom' : 'يرجى إدخال اسم');
+      return;
+    }
+    if (price <= 0) {
+      alert(lang === 'fr' ? 'Le prix doit être supérieur à 0' : 'يجب أن يكون السعر أكبر من 0');
+      return;
+    }
 
-        setServices(prev => [...prev, created]);
-        toggleService(created);
+    try {
+      setSavingService(true);
+      const created = await DatabaseService.createService({
+        category: newService.category,
+        name,
+        description: newService.description,
+        price,
+        isMandatory: newService.isMandatory,
+      });
 
-        setNewService({
-          name: '',
-          price: 0,
-          description: '',
-          category: 'service'
-        });
-        setShowNewServiceForm(false);
-      } catch (err) {
-        console.error('Error creating service:', err);
-        alert(lang === 'fr' ? 'Erreur lors de la création du service' : 'خطأ في إنشاء الخدمة');
-      }
+      setServices(prev => [...prev, created]);
+      // Un service obligatoire est coché d'office — comme au chargement.
+      toggleService(created);
+
+      setNewService({ name: '', price: '', description: '', category: 'service', isMandatory: false });
+      setShowNewServiceForm(false);
+    } catch (err) {
+      console.error('Error creating service:', err);
+      alert(lang === 'fr' ? 'Erreur lors de la création du service' : 'خطأ في إنشاء الخدمة');
+    } finally {
+      setSavingService(false);
     }
   };
 
@@ -2538,7 +2584,7 @@ export const Step5AdditionalServices: React.FC<{
           className="btn-saas-primary"
         >
           <Plus className="w-4 h-4 inline mr-2" />
-          {lang === 'fr' ? 'Créer un Service' : 'إنشاء خدمة'}
+          {lang === 'fr' ? 'Nouveau service' : 'خدمة جديدة'}
         </button>
       </div>
 
@@ -2761,75 +2807,141 @@ export const Step5AdditionalServices: React.FC<{
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setShowNewServiceForm(false)}
           >
+            {/* Formulaire IDENTIQUE à celui de l'écran « Protection & Services » */}
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto"
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto custom-scrollbar"
+              onClick={e => e.stopPropagation()}
             >
-              <h3 className="text-xl font-black text-slate-900 mb-6">
-                ➕ {lang === 'fr' ? 'Créer un Service' : 'إنشاء خدمة'}
-              </h3>
-
-              <div className="space-y-6">
-                {/* Service Category */}
-                <div>
-                  <label className="block font-bold text-slate-900 mb-2">
-                    📂 {lang === 'fr' ? 'Catégorie' : 'الفئة'}
-                  </label>
-                  <select
-                    value={newService.category}
-                    onChange={(e) => setNewService(prev => ({ ...prev, category: e.target.value }))}
-                    className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="service">🛠️ {lang === 'fr' ? 'Service' : 'خدمة'}</option>
-                    <option value="equipment">🔧 {lang === 'fr' ? 'Équipement' : 'معدات'}</option>
-                    <option value="insurance">🛡️ {lang === 'fr' ? 'Assurance' : 'تأمين'}</option>
-                    <option value="decoration">🎉 {lang === 'fr' ? 'Décoration' : 'ديكور'}</option>
-                  </select>
-                </div>
-
-                {/* Service Details */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input
-                    placeholder={lang === 'fr' ? 'Nom du service' : 'اسم الخدمة'}
-                    value={newService.name}
-                    onChange={(e) => setNewService(prev => ({ ...prev, name: e.target.value }))}
-                    className="p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <input
-                    type="number"
-                    placeholder={lang === 'fr' ? 'Prix (DA)' : 'السعر (دج)'}
-                    value={newService.price || ''}
-                    onChange={(e) => setNewService(prev => ({ ...prev, price: Number(e.target.value) }))}
-                    className="p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-
-                <textarea
-                  placeholder={lang === 'fr' ? 'Description du service (optionnel)' : 'وصف الخدمة (اختياري)'}
-                  value={newService.description}
-                  onChange={(e) => setNewService(prev => ({ ...prev, description: e.target.value }))}
-                  className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  rows={3}
-                />
-              </div>
-
-              <div className="flex gap-3 mt-6">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black text-saas-text-main flex items-center gap-2">
+                  <ConciergeBell className="text-saas-primary-via" size={22} />
+                  {lang === 'fr' ? 'Nouveau service' : 'خدمة جديدة'}
+                </h3>
                 <button
                   onClick={() => setShowNewServiceForm(false)}
-                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg"
+                  className="p-2 hover:bg-saas-bg rounded-lg text-saas-text-muted"
                 >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-5">
+                {/* Catégorie */}
+                <div>
+                  <label className="label-saas">{lang === 'fr' ? 'Catégorie' : 'الفئة'}</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {SERVICE_CATEGORIES.map(c => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        onClick={() => setNewService(prev => ({ ...prev, category: c.value }))}
+                        className={`flex flex-col items-center gap-1 py-3 rounded-xl border text-xs font-bold transition-all ${
+                          newService.category === c.value
+                            ? 'border-saas-primary-via bg-saas-primary-via/5 text-saas-primary-via'
+                            : 'border-saas-border text-saas-text-muted hover:border-saas-primary-via/40'
+                        }`}
+                      >
+                        <span className="text-lg">{c.icon}</span>
+                        {lang === 'fr' ? c.fr : c.ar}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="label-saas">{lang === 'fr' ? 'Nom du service' : 'اسم الخدمة'}</label>
+                    <input
+                      className="input-saas"
+                      value={newService.name}
+                      onChange={e => setNewService(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder={lang === 'fr' ? 'Ex : Siège bébé' : 'مثال: مقعد أطفال'}
+                    />
+                  </div>
+                  <div>
+                    <label className="label-saas">{lang === 'fr' ? 'Prix (DA)' : 'السعر (د.ج)'}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      className="input-saas"
+                      value={newService.price}
+                      onChange={e => setNewService(prev => ({ ...prev, price: e.target.value === '' ? '' : Number(e.target.value) }))}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="label-saas">{lang === 'fr' ? 'Description (optionnel)' : 'الوصف (اختياري)'}</label>
+                  <textarea
+                    className="input-saas resize-none"
+                    rows={3}
+                    value={newService.description}
+                    onChange={e => setNewService(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder={lang === 'fr' ? 'Détails du service…' : 'تفاصيل الخدمة…'}
+                  />
+                </div>
+
+                {/* Service obligatoire */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={newService.isMandatory}
+                  onClick={() => setNewService(prev => ({ ...prev, isMandatory: !prev.isMandatory }))}
+                  className="w-full flex items-center justify-between gap-4 p-4 rounded-xl text-left transition-colors cursor-pointer"
+                  style={{
+                    background: newService.isMandatory ? 'var(--color-gold-soft)' : 'var(--color-surface-2)',
+                    border: `1px solid ${newService.isMandatory ? 'var(--color-gold)' : 'var(--color-border-soft)'}`,
+                  }}
+                >
+                  <span className="min-w-0">
+                    <span
+                      className="block font-bold text-sm"
+                      style={{ color: newService.isMandatory ? 'var(--color-gold)' : 'var(--color-text)' }}
+                    >
+                      {lang === 'fr' ? 'Service obligatoire' : 'خدمة إلزامية'}
+                    </span>
+                    <span className="block text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                      {lang === 'fr'
+                        ? 'Sélectionné automatiquement sur toutes les réservations (agence et site web), sans possibilité de le retirer.'
+                        : 'يُحدَّد تلقائيًا في كل الحجوزات (الوكالة والموقع) دون إمكانية إزالته.'}
+                    </span>
+                  </span>
+                  <span
+                    className="relative w-12 h-6 rounded-full shrink-0 transition-colors"
+                    style={{
+                      background: newService.isMandatory ? 'var(--color-gold)' : 'var(--color-surface-3)',
+                      border: '1px solid var(--color-border-soft)',
+                    }}
+                  >
+                    <span
+                      className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
+                      style={{
+                        left: newService.isMandatory ? 'calc(100% - 1.375rem)' : '0.125rem',
+                        background: newService.isMandatory ? '#0A0A0B' : 'var(--color-text-muted)',
+                      }}
+                    />
+                  </span>
+                </button>
+              </div>
+
+              <div className="flex gap-3 mt-8 pt-5 border-t border-saas-border">
+                <button onClick={() => setShowNewServiceForm(false)} className="btn-saas-outline flex-1">
                   {lang === 'fr' ? 'Annuler' : 'إلغاء'}
                 </button>
                 <button
                   onClick={createNewService}
-                  disabled={!newService.name || newService.price <= 0}
-                  className="flex-1 btn-saas-primary disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:translate-y-0"
+                  disabled={savingService}
+                  className="btn-saas-primary flex-1 disabled:opacity-60"
                 >
-                  {lang === 'fr' ? 'Créer Service' : 'إنشاء الخدمة'}
+                  {savingService ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
+                  {lang === 'fr' ? 'Créer' : 'إنشاء'}
                 </button>
               </div>
             </motion.div>
